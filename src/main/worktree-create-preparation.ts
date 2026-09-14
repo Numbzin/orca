@@ -133,7 +133,12 @@ async function claimPreparedWorktree(
   if (selection.kind === 'needs-canonical-base') {
     // The probe is the only await here, and the pool is re-read after it, so the select-and-take
     // below stays one synchronous run and no other create can hold the same entry.
-    const canonicalBase = await canonicalBaseRef(args.repoPath, args.baseBranch, options)
+    let canonicalBase: string
+    try {
+      canonicalBase = await canonicalBaseRef(args.repoPath, args.baseBranch, options)
+    } catch {
+      return { status: 'miss', reason: 'prepare_failed' }
+    }
     selection = selectPreparationForCreate(listPreparations(), { ...request, canonicalBase })
   }
   if (selection.kind !== 'exact' && selection.kind !== 'retarget') {

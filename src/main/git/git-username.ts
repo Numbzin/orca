@@ -324,11 +324,15 @@ export async function resolveLocalGitUsernameDetailed(
       // Missing config keys are expected; try the next explicit username key.
     }
   }
-  if (await localRepoHasEffectiveGitHubRemote(repoPath)) {
-    const outcome = await getGhLoginOutcome()
-    return { username: outcome.login, authoritative: !outcome.timedOut }
+  try {
+    if (await localRepoHasEffectiveGitHubRemote(repoPath)) {
+      const outcome = await getGhLoginOutcome()
+      return { username: outcome.login, authoritative: !outcome.timedOut }
+    }
+    return { username: '', authoritative: true }
+  } catch {
+    return { username: '', authoritative: false }
   }
-  return { username: '', authoritative: true }
 }
 
 export async function resolveLocalGitUsername(repoPath: string): Promise<string> {

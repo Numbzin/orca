@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from './git/command-runner/git-command-timeout'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as WorktreeLogic from './ipc/worktree-logic'
 import type { Store } from './persistence'
@@ -156,6 +157,26 @@ describe('worktree create preparation registry', () => {
     ])
 
     expect(mocks.prepareCheckout).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the preparation available when canonical-base discovery times out', async () => {
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+    mocks.resolveBaseRef.mockRejectedValueOnce(new GitCommandTimeoutError(5000))
+    const args = {
+      repoPath: repo.path,
+      workspaceRoot: '/workspace',
+      worktreePath: '/workspace/final',
+      branch: 'feature/test',
+      baseBranch: 'refs/remotes/origin/main'
+    }
+
+    await expect(consumePreparedWorktreeCreate(args)).resolves.toEqual({
+      status: 'miss',
+      reason: 'prepare_failed'
+    })
+    expect(mocks.finalize).not.toHaveBeenCalled()
+    expect(mocks.discard).not.toHaveBeenCalled()
+    await expect(consumePreparedWorktreeCreate(args)).resolves.toMatchObject({ status: 'hit' })
   })
 
   it('does not claim a preparation after the selected base changes to another branch', async () => {

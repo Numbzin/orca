@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from './command-runner/git-command-timeout'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RunnerModule from './runner'
 
@@ -138,6 +139,23 @@ describe('resolveLocalGitUsername', () => {
     ghExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'gh-demo\n', stderr: '' })
 
     await expect(resolveLocalGitUsername('/repo')).resolves.toBe('gh-demo')
+  })
+
+  it('returns a non-authoritative empty username when default-base discovery times out', async () => {
+    originRemoteUrl = 'https://github.com/stablyai/orca.git'
+    const original = gitExecFileAsyncMock.getMockImplementation()!
+    gitExecFileAsyncMock.mockImplementation(async (...args) => {
+      if (args[0][0] === 'symbolic-ref') {
+        throw new GitCommandTimeoutError(5000)
+      }
+      return original(...args)
+    })
+
+    await expect(resolveLocalGitUsernameDetailed('/repo')).resolves.toEqual({
+      username: '',
+      authoritative: false
+    })
+    expect(ghExecFileAsyncMock).not.toHaveBeenCalled()
   })
 
   it('stops after a successful empty remote list', async () => {

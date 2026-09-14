@@ -65,6 +65,7 @@ export async function createRuntimeLocalGitWorktree(args: {
   configuredPushTarget?: GitPushTarget
   created: GitWorktreeInfo
   addResult: AddWorktreeResult
+  rearmPreparation: () => void
 }> {
   let remoteTrackingBase = await args.resolveRemoteTrackingBase(
     args.repo.path,
@@ -177,8 +178,7 @@ export async function createRuntimeLocalGitWorktree(args: {
           args.settings.refreshLocalBaseRefOnWorktreeCreate
         )) ?? {})
   let addResult: AddWorktreeResult
-  // Why deferred: see createLocalWorktree — the pool re-arm is a full checkout and must not hold an
-  // admission slot while this create still has git to run.
+  // The caller still has materialization probes to finish before starting another checkout.
   let rearmPreparation: () => void = () => {}
   try {
     const preparedAttempt =
@@ -257,12 +257,12 @@ export async function createRuntimeLocalGitWorktree(args: {
     args.branchName,
     args.hasLocalWorktreeGitOptions ? args.localWorktreeGitOptions : undefined
   )
-  rearmPreparation()
   return {
     remoteTrackingBase,
     sparseDirectories,
     ...(configuredPushTarget ? { configuredPushTarget } : {}),
     created,
-    addResult
+    addResult,
+    rearmPreparation
   }
 }

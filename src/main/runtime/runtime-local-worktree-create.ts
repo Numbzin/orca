@@ -143,6 +143,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     localWorktreeGitOptions: worktreeGitOptions,
     onMetadataPersisted: args.onWorktreeMetadataPersisted
   })
+  git.rearmPreparation()
   return {
     ...materialized,
     worktreePath: candidate.worktreePath,

@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from './command-runner/git-command-timeout'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as BoundedFileReader from '../../shared/node-bounded-file-reader'
 import {
@@ -113,6 +114,19 @@ describe('getBranchCompare', () => {
       throw new Error(`unexpected git args: ${args.join(' ')}`)
     })
   }
+
+  it('returns an error summary when the base qualification probe times out', async () => {
+    mockBranchCompareGit({
+      branch: 'feature',
+      probe: { 'refs/remotes/origin/main^{commit}': new GitCommandTimeoutError(5000) },
+      headOid: 'head-oid'
+    })
+
+    await expect(getBranchCompare('/repo', 'origin/main')).resolves.toMatchObject({
+      summary: { status: 'error', errorMessage: 'git timed out.' },
+      entries: []
+    })
+  })
 
   it('returns a pinned branch compare snapshot and parsed branch entries', async () => {
     mockBranchCompareGit({
