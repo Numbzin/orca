@@ -4,6 +4,7 @@ const gitExecFileAsync = vi.hoisted(() => vi.fn())
 
 vi.mock('./runner', () => ({ gitExecFileAsync }))
 
+import { GitCommandTimeoutError } from './command-runner/git-command-timeout'
 import { hasLocalWorktreeBaseRef, probeWorktreeBaseRefPresence } from './worktree-base-ref-probe'
 
 describe('probeWorktreeBaseRefPresence', () => {
@@ -80,6 +81,17 @@ describe('hasLocalWorktreeBaseRef', () => {
       ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}'],
       { cwd: repoPath }
     )
+  })
+
+  // The command timeout now bounds the admission wait too, so a queued probe rejects without
+  // spawning. Folding that into `false` steers the create into a fetch for a base it already has.
+  it('fails rather than reporting an absent base when the probe never reached git', async () => {
+    gitExecFileAsync.mockRejectedValue(new GitCommandTimeoutError(120_000))
+
+    await expect(hasLocalWorktreeBaseRef(repoPath, 'origin/main')).rejects.toMatchObject({
+      name: 'GitCommandTimeoutError',
+      timeoutMs: 120_000
+    })
   })
 
   it('probes a bare commit id as an object, not as a ref', async () => {

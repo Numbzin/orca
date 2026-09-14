@@ -1,12 +1,16 @@
+import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
+import { GitCommandTimeoutError } from './command-runner/git-command-timeout'
 import { gitExecFileAsync, gitExecFileSync } from './runner'
 
 export type LocalGitExecOptions = {
   wslDistro?: string
+  admissionTier?: GitAdmissionTier
 }
 
 export type LocalDefaultBaseRefGitOptions = {
   cwd: string
   wslDistro?: string
+  admissionTier?: GitAdmissionTier
 }
 
 export const DEFAULT_BASE_REF_PROBE_TIMEOUT_MS = 15_000
@@ -14,8 +18,12 @@ export const DEFAULT_BASE_REF_PROBE_TIMEOUT_MS = 15_000
 export function gitExecOptions(
   cwd: string,
   options: LocalGitExecOptions = {}
-): { cwd: string; wslDistro?: string } {
-  return options.wslDistro ? { cwd, wslDistro: options.wslDistro } : { cwd }
+): LocalDefaultBaseRefGitOptions {
+  return {
+    cwd,
+    ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
+  }
 }
 
 export const DEFAULT_BASE_REF_PROBES: readonly { ref: string; returnAs: string }[] = [
@@ -83,11 +91,20 @@ export async function getBaseRefDefault(
 
 export type GitExec = (argv: string[]) => Promise<{ stdout: string }>
 
+/** A timed-out probe never read the ref store, so folding it into "absent" would report a repo
+ *  with `origin/main` as having no default base. Let it fail with its real cause instead. */
+function rethrowGitCommandTimeout(error: unknown): void {
+  if (error instanceof GitCommandTimeoutError) {
+    throw error
+  }
+}
+
 async function hasGitRefViaExec(exec: GitExec, ref: string): Promise<boolean> {
   try {
     await exec(['rev-parse', '--verify', '--quiet', ref])
     return true
-  } catch {
+  } catch (error) {
+    rethrowGitCommandTimeout(error)
     return false
   }
 }
@@ -100,7 +117,8 @@ async function resolveVerifiedOriginHeadBaseRefViaExec(exec: GitExec): Promise<s
       return null
     }
     return gitRefToDefaultBaseRef(ref)
-  } catch {
+  } catch (error) {
+    rethrowGitCommandTimeout(error)
     return null
   }
 }

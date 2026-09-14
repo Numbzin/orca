@@ -471,9 +471,7 @@ describe('worktree create preparation registry', () => {
     expect(mocks.unlock).toHaveBeenCalledWith(repo.path, '/workspace/final', {
       admissionTier: 'background'
     })
-    expect(mocks.discard).not.toHaveBeenCalledWith(repo.path, '/workspace/final', {
-      admissionTier: 'background'
-    })
+    expect(mocks.discard).not.toHaveBeenCalledWith(repo.path, '/workspace/final', expect.anything())
   })
 
   it('does not classify a user branch worktree under the preparation directory as stale', async () => {
@@ -596,6 +594,9 @@ describe('worktree create preparation registry', () => {
       baseBranch: 'origin/main'
     })
 
+    // Drained first: an eager re-arm reaches prepareCheckout only after the pool awaits stale
+    // cleanup, so asserting in the same turn would pass with the deferral removed.
+    await flushBackgroundWork()
     // The replacement checkout would otherwise hold a git admission slot for the rest of the create.
     expect(mocks.prepareCheckout).not.toHaveBeenCalled()
     expect(attempt.status).toBe('hit')
@@ -604,6 +605,34 @@ describe('worktree create preparation registry', () => {
     }
     await flushBackgroundWork()
     expect(mocks.prepareCheckout).toHaveBeenCalledTimes(1)
+  })
+
+  // `startPreparation` overwrites the map entry outright, so a thunk that armed over a prefetch
+  // would leave that prefetch's locked checkout on disk with nothing holding a reference to it.
+  it('skips the deferred re-arm when a prefetch armed the same key mid-create', async () => {
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+    await consumeOnce('first')
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+
+    const attempt = await consumePreparedWorktreeCreate({
+      repoPath: repo.path,
+      workspaceRoot: '/workspace',
+      worktreePath: '/workspace/second',
+      branch: 'feature/second',
+      baseBranch: 'origin/main'
+    })
+    expect(attempt.status).toBe('hit')
+
+    // The user reopens the composer while the create is still finishing.
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+    mocks.prepareCheckout.mockClear()
+
+    if (attempt.status === 'hit') {
+      attempt.rearm()
+    }
+    await flushBackgroundWork()
+
+    expect(mocks.prepareCheckout).not.toHaveBeenCalled()
   })
 
   it('does not re-arm when finalization failed', async () => {

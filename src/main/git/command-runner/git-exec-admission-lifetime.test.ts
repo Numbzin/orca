@@ -66,6 +66,13 @@ function mockChild(pid: number | undefined = 1234): ChildProcess {
   return child as unknown as ChildProcess
 }
 
+/** `vi.waitFor` jumps the fake clock, which now also runs the admission deadline — a command with a
+ *  10ms budget would time out in the queue before it ever spawned. Drain the grant's microtasks
+ *  instead, leaving the clock where the test put it. */
+async function settleAdmissionGrant(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0)
+}
+
 describe('git exec admission lifetime', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -85,7 +92,8 @@ describe('git exec admission lifetime', () => {
     execFileMock.mockReturnValue(child)
     const pending = gitExecFileAsync(['status'], { cwd: '/repo', timeout: 10 })
     const rejection = expect(pending).rejects.toThrow('timed out')
-    await vi.waitFor(() => expect(execFileMock).toHaveBeenCalledOnce())
+    await settleAdmissionGrant()
+    expect(execFileMock).toHaveBeenCalledOnce()
 
     await vi.advanceTimersByTimeAsync(10)
     await rejection
@@ -188,7 +196,8 @@ describe('git exec admission lifetime', () => {
       timeout: 10
     })
     const rejection = expect(pending).rejects.toThrow('timed out')
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledOnce())
+    await settleAdmissionGrant()
+    expect(spawnMock).toHaveBeenCalledOnce()
 
     await vi.advanceTimersByTimeAsync(2010)
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(1)

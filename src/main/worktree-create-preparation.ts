@@ -203,13 +203,19 @@ function deferRearmPreparation(
   canonicalBase: string
 ): () => void {
   const continuesBurst = recordPreparationConsume(entry.key)
-  if (
-    !continuesBurst ||
-    findPreparation(entry.repoPathKey, entry.workspaceRootKey, canonicalBase, entry.wslDistro)
-  ) {
+  const alreadyArmed = (): boolean =>
+    findPreparation(entry.repoPathKey, entry.workspaceRootKey, canonicalBase, entry.wslDistro) !==
+    undefined
+  if (!continuesBurst || alreadyArmed()) {
     return () => {}
   }
   return () => {
+    // Re-checked here, not only at consume time: `startPreparation` overwrites the map entry
+    // outright, so arming over a prefetch that landed during the create would strand its
+    // checkout on disk with no owner to discard it.
+    if (alreadyArmed()) {
+      return
+    }
     void startPreparation({
       repoPath: entry.repoPath,
       workspaceRoot: entry.workspaceRoot,

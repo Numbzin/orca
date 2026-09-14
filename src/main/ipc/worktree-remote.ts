@@ -7,6 +7,7 @@ import { posix, win32 } from 'node:path'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import type { Store } from '../persistence'
+import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
 import type { SetupAgentStartupPolicy } from '../../shared/orca-yaml-hook-types'
@@ -1263,7 +1264,7 @@ export async function configureCreatedWorktreePushTarget(
   worktreePath: string,
   branchName: string,
   target: GitPushTarget,
-  gitOptions: { wslDistro?: string } = {}
+  gitOptions: { wslDistro?: string; admissionTier?: GitAdmissionTier } = {}
 ): Promise<GitPushTarget> {
   return configureCreatedWorktreePushTargetWithExec(
     (args, cwd) => gitExecFileAsync(args, { cwd, ...gitOptions }),
@@ -2326,6 +2327,10 @@ export async function createLocalWorktree(
     : []
   // Tier kept off `localWorktreeGitOptions` itself: callers that only route WSL test that object
   // for emptiness, and an extra key would read as "this repo has local git routing".
+  const interactiveWorktreeGitOptions = {
+    ...localWorktreeGitOptions,
+    admissionTier: CREATE_GIT_ADMISSION_TIER
+  }
   const addProjectGitOptions = (options?: AddWorktreeOptions): AddWorktreeOptions => ({
     ...options,
     ...localWorktreeGitOptions,
@@ -2535,14 +2540,14 @@ export async function createLocalWorktree(
         effectiveSanitizedName,
         settings,
         username,
-        localWorktreeGitOptions
+        interactiveWorktreeGitOptions
       )
       const tryExistingBranch = async (): Promise<boolean> => {
         checkoutExistingBranch = await canCheckoutExistingLocalBranch(
           repo.path,
           branchName,
           baseBranch,
-          localWorktreeGitOptions
+          interactiveWorktreeGitOptions
         )
         return checkoutExistingBranch
       }
@@ -2557,7 +2562,7 @@ export async function createLocalWorktree(
             repo.path,
             branchName,
             baseBranch,
-            localWorktreeGitOptions,
+            interactiveWorktreeGitOptions,
             preferExistingBranch ? undefined : tryExistingBranch
           )
       if (checkoutExistingBranch && !selectedExistingLocalBranchName) {
@@ -2829,7 +2834,7 @@ export async function createLocalWorktree(
       worktreePath,
       branchName,
       preparedPushTarget,
-      localWorktreeGitOptions
+      interactiveWorktreeGitOptions
     )
   }
 
@@ -2839,10 +2844,7 @@ export async function createLocalWorktree(
     worktrees: gitWorktrees,
     listingComplete
   } = await timing.time('list_created_worktree', async () =>
-    resolveCreatedWorktree(repo.path, worktreePath, branchName, {
-      ...localWorktreeGitOptions,
-      admissionTier: CREATE_GIT_ADMISSION_TIER
-    })
+    resolveCreatedWorktree(repo.path, worktreePath, branchName, interactiveWorktreeGitOptions)
   )
 
   const worktreeId = `${repo.id}::${created.path}`

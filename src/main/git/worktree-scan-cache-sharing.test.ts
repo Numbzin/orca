@@ -120,6 +120,28 @@ describe('listWorktrees in-flight sharing', () => {
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
   })
 
+  // The create's listing is promoted to `interactive` precisely to skip the queue a status scan
+  // is already sitting in; joining that scan would hand it the wait back.
+  it('does not let an interactive listing join a scan queued at another tier', async () => {
+    const resolvers: ((value: { stdout: string }) => void)[] = []
+    gitExecFileAsyncMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve)
+        })
+    )
+
+    const statusScan = listWorktreeGraph('/repo', { admissionTier: 'status' })
+    const interactiveScan = listWorktreeGraph('/repo', { admissionTier: 'interactive' })
+    expect(resolvers).toHaveLength(2)
+
+    for (const resolve of resolvers) {
+      resolve({ stdout: 'worktree /repo\nHEAD abc123\nbranch refs/heads/main\n' })
+    }
+    await Promise.all([statusScan, interactiveScan])
+    expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(2)
+  })
+
   // Order must not matter: whichever runs first owns the listing and the other joins it.
   it('runs one git listing when the annotated scan starts first', async () => {
     const resolvers: ((value: { stdout: string }) => void)[] = []

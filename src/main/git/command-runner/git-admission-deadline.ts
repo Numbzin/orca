@@ -19,11 +19,9 @@ export async function acquireGitAdmissionWithinTimeout(
   if (timeoutMs === undefined || timeoutMs <= 0) {
     return acquireGitAdmission(request)
   }
+  // Own controller: a deadline abort must stay distinguishable from the caller's.
   const deadline = new AbortController()
-  // Why the microtask hop: the scheduler hands a permit over on a microtask, so a deadline firing in
-  // that same turn would cancel a grant the caller is about to hold. Deferring lets the grant settle
-  // first, after which the scheduler ignores the abort.
-  const timer = setTimeout(() => queueMicrotask(() => deadline.abort()), timeoutMs)
+  const timer = setTimeout(() => deadline.abort(), timeoutMs)
   const signal = request.signal
     ? AbortSignal.any([request.signal, deadline.signal])
     : deadline.signal

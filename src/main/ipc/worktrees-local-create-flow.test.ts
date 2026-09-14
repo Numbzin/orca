@@ -554,7 +554,7 @@ describe('registerWorktreeHandlers', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['check-ref-format', '--branch', 'feature/something'],
-      { cwd: '/workspace/repo' }
+      { cwd: '/workspace/repo', admissionTier: 'interactive' }
     )
     expect(addWorktreeMock).toHaveBeenCalledWith(
       '/workspace/repo',

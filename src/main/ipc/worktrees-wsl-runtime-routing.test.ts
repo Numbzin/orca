@@ -210,7 +210,7 @@ describe('registerWorktreeHandlers', () => {
       '/workspace/repo',
       'improve-dashboard',
       'origin/main',
-      { wslDistro: 'Ubuntu' }
+      { wslDistro: 'Ubuntu', admissionTier: 'interactive' }
     )
     expect(listWorktreesMock).toHaveBeenCalledWith('/workspace/repo', {
       wslDistro: 'Ubuntu',
