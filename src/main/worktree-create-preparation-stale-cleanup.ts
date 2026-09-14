@@ -33,6 +33,10 @@ export async function startStalePreparationCleanup(
     return
   }
   void retryPendingPreparationDiscards(cleanupKey)
+  // Why 'background': reclaiming another process's leftovers is never what a user is waiting on, and
+  // removing a large tree holds a general admission slot for seconds. The scan stays at the caller's
+  // tier because a preparation this create may claim is not ready until it finishes.
+  const reclaimOptions: AddWorktreeOptions = { ...options, admissionTier: 'background' }
   const scan = listWorktreeGraph(repoPath, {
     ...options,
     includeCreatePreparations: true
@@ -53,9 +57,9 @@ export async function startStalePreparationCleanup(
         // Preserve a branch-attached final path after a crash; only detached or
         // still-hidden preparations are safe to discard automatically.
         if (worktree.branch && pathOwnerPid === null) {
-          await unlockPreparedWorktree(repoPath, worktree.path, options).catch(() => {})
+          await unlockPreparedWorktree(repoPath, worktree.path, reclaimOptions).catch(() => {})
         } else if (pathOwnerPid === lockOwnerPid) {
-          await discardPreparedWorktree(repoPath, worktree.path, options).catch(() => {})
+          await discardPreparedWorktree(repoPath, worktree.path, reclaimOptions).catch(() => {})
         }
       }
     }

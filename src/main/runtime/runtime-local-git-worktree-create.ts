@@ -177,6 +177,9 @@ export async function createRuntimeLocalGitWorktree(args: {
           args.settings.refreshLocalBaseRefOnWorktreeCreate
         )) ?? {})
   let addResult: AddWorktreeResult
+  // Why deferred: see createLocalWorktree — the pool re-arm is a full checkout and must not hold an
+  // admission slot while this create still has git to run.
+  let rearmPreparation: () => void = () => {}
   try {
     const preparedAttempt =
       sparseDirectories.length === 0 && !args.checkoutExistingBranch
@@ -193,6 +196,7 @@ export async function createRuntimeLocalGitWorktree(args: {
     // This path has no create-span recorder, so the miss reason is only observable on the IPC path.
     if (preparedAttempt?.status === 'hit') {
       addResult = preparedAttempt.result
+      rearmPreparation = preparedAttempt.rearm
     } else if (sparseDirectories.length > 0) {
       addResult =
         (await (addOptions
@@ -253,6 +257,7 @@ export async function createRuntimeLocalGitWorktree(args: {
     args.branchName,
     args.hasLocalWorktreeGitOptions ? args.localWorktreeGitOptions : undefined
   )
+  rearmPreparation()
   return {
     remoteTrackingBase,
     sparseDirectories,

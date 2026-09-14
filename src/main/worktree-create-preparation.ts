@@ -44,7 +44,13 @@ export function hasPendingWorktreeCreatePreparations(): boolean {
 }
 
 export type PreparedWorktreeCreateAttempt =
-  | { status: 'hit'; retargeted: boolean; result: AddWorktreeResult }
+  | {
+      status: 'hit'
+      retargeted: boolean
+      result: AddWorktreeResult
+      /** Run once the create has returned to the renderer; see {@link deferRearmPreparation}. */
+      rearm: () => void
+    }
   | { status: 'miss'; reason: PreparedCheckoutMissReason }
 
 type ConsumePreparedWorktreeArgs = {
@@ -183,31 +189,37 @@ async function claimPreparedWorktree(
 /** Replaces a just-consumed preparation, re-armed on the base the create actually used so the
  *  next one hits exactly — but only once the user has shown they are creating in a burst. A
  *  replacement costs a full checkout and ~5 minutes of disk until its TTL, so arming one after an
- *  isolated create spends that on nobody. Never awaited: create has already returned by the time
- *  the replacement checkout finishes. */
-function rearmPreparation(
+ *  isolated create spends that on nobody.
+ *
+ *  Returns a thunk rather than launching: the replacement is a full `reset --hard`, which on a
+ *  large repo holds a general admission slot for tens of seconds. Started mid-create it competes
+ *  with the create's own git, so the caller runs it only once the create has returned. The burst
+ *  bookkeeping still happens here — a prefetch that re-armed this key while we finalized would
+ *  otherwise swallow the consume, and the next create would look isolated when it is really the
+ *  middle of a burst. */
+function deferRearmPreparation(
   entry: PreparationEntry,
   baseBranch: string,
   canonicalBase: string
-): void {
-  // Record first: a prefetch that re-armed this key while we finalized would otherwise swallow the
-  // consume, and the next create would look isolated when it is really the middle of a burst.
+): () => void {
   const continuesBurst = recordPreparationConsume(entry.key)
   if (
     !continuesBurst ||
     findPreparation(entry.repoPathKey, entry.workspaceRootKey, canonicalBase, entry.wslDistro)
   ) {
-    return
+    return () => {}
   }
-  void startPreparation({
-    repoPath: entry.repoPath,
-    workspaceRoot: entry.workspaceRoot,
-    baseBranch,
-    canonicalBase,
-    options: entry.options
-  }).catch(() => {
-    // Why: a warm-up failure is recovered by the normal add on the next create.
-  })
+  return () => {
+    void startPreparation({
+      repoPath: entry.repoPath,
+      workspaceRoot: entry.workspaceRoot,
+      baseBranch,
+      canonicalBase,
+      options: entry.options
+    }).catch(() => {
+      // Why: a warm-up failure is recovered by the normal add on the next create.
+    })
+  }
 }
 
 export async function consumePreparedWorktreeCreate(
@@ -237,8 +249,8 @@ export async function consumePreparedWorktreeCreate(
     )
     // Consuming the only prepared checkout leaves the next create cold. Re-arm for a user who is
     // creating in a burst; the TTL and the preparation limit still bound an unused replacement.
-    rearmPreparation(entry, args.baseBranch, claim.canonicalBase)
-    return { status: 'hit', retargeted: claim.retargeted, result }
+    const rearm = deferRearmPreparation(entry, args.baseBranch, claim.canonicalBase)
+    return { status: 'hit', retargeted: claim.retargeted, result, rearm }
   } catch (error) {
     await discardPreparedWorktree(args.repoPath, entry.preparedPath, options).catch(() => {})
     console.warn(

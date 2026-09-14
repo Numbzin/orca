@@ -1,6 +1,7 @@
 import { windowsLongPathGitArgs } from '../../shared/windows-long-path-git-args'
 import { resolveWorktreeAddBaseRef } from '../../shared/worktree/base-ref'
 import type { AddWorktreeOptions, AddWorktreeResult, GitWorktreeExecOptions } from './worktree'
+import type { GitExecOptionsForWorktree } from './worktree-operation-options'
 import {
   configurePushAutoSetupRemote,
   notifyPreparedWorktreeMutation,
@@ -15,22 +16,20 @@ import { gitExecFileAsync } from './runner'
 import { runWithGitReadCacheInvalidation } from './status'
 import { invalidateWslLinkedWorktreeGitRouting } from './wsl-linked-worktree-git-routing'
 
-function gitExecOptions(
-  cwd: string,
-  options: GitWorktreeExecOptions
-): { cwd: string; wslDistro?: string; signal?: AbortSignal; timeout?: number } {
+function gitExecOptions(cwd: string, options: GitWorktreeExecOptions): GitExecOptionsForWorktree {
   return {
     cwd,
     ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
-    ...(options.timeout ? { timeout: options.timeout } : {})
+    ...(options.timeout ? { timeout: options.timeout } : {}),
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
   }
 }
 
 function gitCleanupOptions(
   cwd: string,
   options: GitWorktreeExecOptions
-): { cwd: string; wslDistro?: string; timeout?: number } {
+): GitExecOptionsForWorktree {
   // Why: cancellation must not strand a partially moved worktree; cleanup is bounded separately.
   return gitExecOptions(cwd, { ...options, signal: undefined })
 }

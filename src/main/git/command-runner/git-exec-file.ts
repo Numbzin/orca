@@ -24,7 +24,7 @@ import {
 import { prepareWindowsHostGitEnvironment } from './windows-host-git-environment'
 import { buildNetworkSshPolicyEnv } from './git-ssh-policy-env'
 import { nonInteractiveGitEnv, untranslatedGitOutputEnv } from './git-process-env'
-import { acquireGitAdmission } from './git-subprocess-admission'
+import { acquireGitAdmissionWithinTimeout } from './git-admission-deadline'
 import { GitCommandTimeoutError, gitCommandTimeoutMs } from './git-command-timeout'
 
 /**
@@ -65,15 +65,18 @@ async function gitExecFileAsyncUnlocked(
       const policy = effectiveOptions.useConfiguredSshCommandForNetwork
         ? await buildNetworkSshPolicyEnv(effectiveOptions)
         : { env: nonInteractiveGitEnv(effectiveOptions.env), mode: 'default' as const }
-      const grant = await acquireGitAdmission({
-        args,
-        cwd: options.cwd,
-        wslDistro: options.wslDistro,
-        tier: options.admissionTier,
-        signal: options.signal
-      })
-      span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
       const timeoutMs = gitCommandTimeoutMs(args, options.timeout, options.timeoutMsForTest)
+      const grant = await acquireGitAdmissionWithinTimeout(
+        {
+          args,
+          cwd: options.cwd,
+          wslDistro: options.wslDistro,
+          tier: options.admissionTier,
+          signal: options.signal
+        },
+        timeoutMs
+      )
+      span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
       const terminationState: { current: Promise<void> | null } = { current: null }
       const capture = (
         command: ResolvedCommand
@@ -211,14 +214,17 @@ export async function gitExecFileAsyncBuffer(
       await environmentReady
     }
     resolved = resolveGitCommand(args, options, false, true)
-    const grant = await acquireGitAdmission({
-      args,
-      cwd: options.cwd,
-      wslDistro: options.wslDistro,
-      tier: options.admissionTier
-    })
-    span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
     const timeoutMs = gitCommandTimeoutMs(args, options.timeout, options.timeoutMsForTest)
+    const grant = await acquireGitAdmissionWithinTimeout(
+      {
+        args,
+        cwd: options.cwd,
+        wslDistro: options.wslDistro,
+        tier: options.admissionTier
+      },
+      timeoutMs
+    )
+    span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
     let termination: Promise<void> | null = null
     try {
       let reportTerminated: () => void = () => {}

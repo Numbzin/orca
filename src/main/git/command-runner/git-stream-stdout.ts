@@ -25,7 +25,7 @@ import {
 import { prepareWindowsHostGitEnvironment } from './windows-host-git-environment'
 import { nonInteractiveGitEnv, untranslatedGitOutputEnv } from './git-process-env'
 import { gitSpawn } from './git-spawn'
-import { acquireGitAdmission } from './git-subprocess-admission'
+import { acquireGitAdmissionWithinTimeout } from './git-admission-deadline'
 import { GitCommandTimeoutError, gitCommandTimeoutMs } from './git-command-timeout'
 
 /** Result of a streamed git command; `stoppedEarly` is true when onStdout asked to stop before the child exited. */
@@ -92,13 +92,16 @@ export async function gitStreamStdout(
       gitOptions.env = await environmentReady
     }
     resolved = resolveGitCommand(args, gitOptions)
-    const grant = await acquireGitAdmission({
-      args,
-      cwd: options.cwd,
-      wslDistro: options.wslDistro,
-      tier: options.admissionTier,
-      signal: options.signal
-    })
+    const grant = await acquireGitAdmissionWithinTimeout(
+      {
+        args,
+        cwd: options.cwd,
+        wslDistro: options.wslDistro,
+        tier: options.admissionTier,
+        signal: options.signal
+      },
+      timeoutMs
+    )
     span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
     const terminationState: { current: Promise<void> | null } = { current: null }
     const stream = (command: ResolvedCommand): Promise<GitStreamResult> =>

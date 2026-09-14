@@ -57,6 +57,23 @@ describe('git stream admission lifetime', () => {
     expect(_gitAdmissionSnapshotForTests().budgets.general?.baseUsed).toBe(0)
   })
 
+  it('fails a queued stream on its own timeout without ever spawning it', async () => {
+    _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
+    const blocker = mockChild()
+    gitSpawnMock.mockReturnValue(blocker)
+    const holding = gitStreamStdout(['status'], { cwd: '/repo', onStdout: () => {} })
+    await vi.waitFor(() => expect(gitSpawnMock).toHaveBeenCalledOnce())
+
+    await expect(
+      gitStreamStdout(['status'], { cwd: '/repo', timeoutMs: 50, onStdout: () => {} })
+    ).rejects.toMatchObject({ name: 'GitCommandTimeoutError', timeoutMs: 50 })
+    expect(gitSpawnMock).toHaveBeenCalledOnce()
+    expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
+
+    blocker.emit('close', 0, null)
+    await expect(holding).resolves.toEqual({ stoppedEarly: false })
+  })
+
   it('retains the permit after abort settlement until close', async () => {
     const child = mockChild()
     const controller = new AbortController()

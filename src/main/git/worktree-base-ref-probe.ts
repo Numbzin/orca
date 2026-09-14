@@ -1,3 +1,4 @@
+import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
 import { gitExecFileAsync } from './runner'
 import { isShowRefNoMatchError } from './exact-ref-probe'
 import { hasCommitObjectViaGitExec } from './commit-object-ref'
@@ -5,7 +6,9 @@ import { isSafeGitRefName } from '../../shared/git-status-upstream-ref'
 import { resolveWorktreeAddBaseRef } from '../../shared/worktree/base-ref'
 
 type GitExecOptions = {
+  cwd?: string
   wslDistro?: string
+  admissionTier?: GitAdmissionTier
 }
 
 /**

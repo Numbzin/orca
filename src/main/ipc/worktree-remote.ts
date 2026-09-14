@@ -174,6 +174,9 @@ const SSH_WORKTREE_CREATE_FETCH_FRESHNESS_MS = 30_000
 const SSH_WORKTREE_CREATE_FETCH_CACHE_MAX = 512
 // Why: bound the fallback `git fetch origin` so a Windows credential-manager GUI hang (STA-1292) can't wedge worktree creation forever.
 const CREATE_BASE_FALLBACK_FETCH_TIMEOUT_MS = 60_000
+// Why: a local create is a command the user waits on. At the default 'status' tier its git cannot
+// use the admission scheduler's headroom slots, so on a busy repo it queues behind background scans.
+const CREATE_GIT_ADMISSION_TIER = 'interactive' as const
 // Why (#17828 CodeRabbit follow-up): the deferred materialize fetch runs off the main
 // create path (terminal spawn, mid-session sync) with nothing else bounding it -- same
 // STA-1292 hang risk as the create-time fallback above, so mirror its timeout.
@@ -2312,18 +2315,22 @@ export async function createLocalWorktree(
     settings,
     getWorktreeMirrorDistro(store, repo)
   )
-  const localGitExecOptions = getLocalProjectGitExecOptions(store, repo)
+  const localGitExecOptions = {
+    ...getLocalProjectGitExecOptions(store, repo),
+    admissionTier: CREATE_GIT_ADMISSION_TIER
+  }
   const localWorktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
   const hasLocalWorktreeGitOptions = Object.keys(localWorktreeGitOptions).length > 0
   const localWorktreeGitOptionArgs: [] | [{ wslDistro?: string }] = hasLocalWorktreeGitOptions
     ? [localWorktreeGitOptions]
     : []
-  const addProjectGitOptions = (options?: AddWorktreeOptions): AddWorktreeOptions | undefined => {
-    if (!hasLocalWorktreeGitOptions) {
-      return options
-    }
-    return { ...options, ...localWorktreeGitOptions }
-  }
+  // Tier kept off `localWorktreeGitOptions` itself: callers that only route WSL test that object
+  // for emptiness, and an extra key would read as "this repo has local git routing".
+  const addProjectGitOptions = (options?: AddWorktreeOptions): AddWorktreeOptions => ({
+    ...options,
+    ...localWorktreeGitOptions,
+    admissionTier: CREATE_GIT_ADMISSION_TIER
+  })
 
   const requestedName = args.name
   const sanitizedName = sanitizeWorktreeName(args.name)
@@ -2425,7 +2432,7 @@ export async function createLocalWorktree(
           )
         }
       }
-    } else if (!(await hasLocalWorktreeBaseRef(repo.path, baseBranch, localWorktreeGitOptions))) {
+    } else if (!(await hasLocalWorktreeBaseRef(repo.path, baseBranch, localGitExecOptions))) {
       // Why: non-remote-prefix bases (plain main/master/local) keep the legacy best-effort fetch; verified PR SHA bases already have the object.
       legacyFetchPromise = runtime
         .fetchRemoteWithCache(repo.path, 'origin', ...localWorktreeGitOptionArgs)
@@ -2434,7 +2441,7 @@ export async function createLocalWorktree(
       emitCreateWorktreeProgress(mainWindow, 'fetching', args.creationId)
     }
   } else {
-    if (!(await hasLocalWorktreeBaseRef(repo.path, baseBranch, localWorktreeGitOptions))) {
+    if (!(await hasLocalWorktreeBaseRef(repo.path, baseBranch, localGitExecOptions))) {
       legacyFetchPromise = gitExecFileAsync(['fetch', 'origin'], {
         ...localGitExecOptions,
         timeout: CREATE_BASE_FALLBACK_FETCH_TIMEOUT_MS
@@ -2699,10 +2706,15 @@ export async function createLocalWorktree(
     ...remoteTrackingBaseOption,
     ...(suggestLocalBaseRefUpdate ? { suggestLocalBaseRefUpdate } : {})
   }
-  const preparedWorktreeOptions = suggestLocalBaseRefUpdate
-    ? addProjectGitOptions({ ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate })
-    : addProjectGitOptions(remoteTrackingBaseOption)
+  const preparedWorktreeOptions = addProjectGitOptions(
+    suggestLocalBaseRefUpdate
+      ? { ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate }
+      : remoteTrackingBaseOption
+  )
   let addResult: AddWorktreeResult
+  // Why deferred: re-arming the prepared-checkout pool is a full `reset --hard`; started here it
+  // would hold a general admission slot for the rest of this create's own git.
+  let rearmPreparation: () => void = () => {}
   try {
     addResult =
       (await timing.time('git_worktree_add', async () => {
@@ -2714,7 +2726,7 @@ export async function createLocalWorktree(
             branch: branchName,
             baseBranch,
             refreshLocalBaseRef: settings.refreshLocalBaseRefOnWorktreeCreate,
-            ...(preparedWorktreeOptions ? { options: preparedWorktreeOptions } : {})
+            options: preparedWorktreeOptions
           })
           timing.recordPreparedCheckout(
             prepared.status === 'hit'
@@ -2722,6 +2734,7 @@ export async function createLocalWorktree(
               : { status: 'miss', reason: prepared.reason }
           )
           if (prepared.status === 'hit') {
+            rearmPreparation = prepared.rearm
             return prepared.result
           }
         } else {
@@ -2753,25 +2766,15 @@ export async function createLocalWorktree(
               addProjectGitOptions({ ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate })
             )
           }
-          const sparseOptions = addProjectGitOptions(remoteTrackingBaseOption)
-          return sparseOptions
-            ? addSparseWorktree(
-                repo.path,
-                worktreePath,
-                branchName,
-                sparseDirectories,
-                baseBranch,
-                settings.refreshLocalBaseRefOnWorktreeCreate,
-                sparseOptions
-              )
-            : addSparseWorktree(
-                repo.path,
-                worktreePath,
-                branchName,
-                sparseDirectories,
-                baseBranch,
-                settings.refreshLocalBaseRefOnWorktreeCreate
-              )
+          return addSparseWorktree(
+            repo.path,
+            worktreePath,
+            branchName,
+            sparseDirectories,
+            baseBranch,
+            settings.refreshLocalBaseRefOnWorktreeCreate,
+            addProjectGitOptions(remoteTrackingBaseOption)
+          )
         }
 
         if (checkoutExistingBranch) {
@@ -2796,24 +2799,15 @@ export async function createLocalWorktree(
             addProjectGitOptions({ ...remoteTrackingBaseOption, suggestLocalBaseRefUpdate })
           )
         }
-        const worktreeOptions = addProjectGitOptions(remoteTrackingBaseOption)
-        return worktreeOptions
-          ? addWorktree(
-              repo.path,
-              worktreePath,
-              branchName,
-              baseBranch,
-              settings.refreshLocalBaseRefOnWorktreeCreate,
-              false,
-              worktreeOptions
-            )
-          : addWorktree(
-              repo.path,
-              worktreePath,
-              branchName,
-              baseBranch,
-              settings.refreshLocalBaseRefOnWorktreeCreate
-            )
+        return addWorktree(
+          repo.path,
+          worktreePath,
+          branchName,
+          baseBranch,
+          settings.refreshLocalBaseRefOnWorktreeCreate,
+          false,
+          addProjectGitOptions(remoteTrackingBaseOption)
+        )
       })) ?? {}
   } catch (error) {
     if (shouldRetireGeneratedName && failedWorktreeCreationNeedsRetirement(error)) {
@@ -2845,12 +2839,10 @@ export async function createLocalWorktree(
     worktrees: gitWorktrees,
     listingComplete
   } = await timing.time('list_created_worktree', async () =>
-    resolveCreatedWorktree(
-      repo.path,
-      worktreePath,
-      branchName,
-      hasLocalWorktreeGitOptions ? localWorktreeGitOptions : undefined
-    )
+    resolveCreatedWorktree(repo.path, worktreePath, branchName, {
+      ...localWorktreeGitOptions,
+      admissionTier: CREATE_GIT_ADMISSION_TIER
+    })
   )
 
   const worktreeId = `${repo.id}::${created.path}`
@@ -3039,6 +3031,7 @@ export async function createLocalWorktree(
   )
 
   notifyWorktreesChanged(mainWindow, repo.id)
+  rearmPreparation()
   return {
     worktree: {
       ...worktree,

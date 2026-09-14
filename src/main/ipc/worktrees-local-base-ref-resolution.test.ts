@@ -270,7 +270,9 @@ describe('registerWorktreeHandlers', () => {
       '/workspace/improve-dashboard',
       'improve-dashboard',
       'develop',
-      false
+      false,
+      false,
+      { admissionTier: 'interactive' }
     )
   })
 
@@ -331,7 +333,9 @@ describe('registerWorktreeHandlers', () => {
       '/workspace/slash-local-base',
       'slash-local-base',
       'team/feature',
-      false
+      false,
+      false,
+      { admissionTier: 'interactive' }
     )
   })
 
@@ -383,7 +387,9 @@ describe('registerWorktreeHandlers', () => {
       '/workspace/offline-local-main',
       'offline-local-main',
       'main',
-      false
+      false,
+      false,
+      { admissionTier: 'interactive' }
     )
   })
 
@@ -499,6 +505,7 @@ describe('registerWorktreeHandlers', () => {
       false,
       false,
       {
+        admissionTier: 'interactive',
         suggestLocalBaseRefUpdate: true,
         remoteTrackingBase: {
           remote: 'origin',
