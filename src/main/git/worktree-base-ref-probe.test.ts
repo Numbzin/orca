@@ -107,6 +107,20 @@ describe('hasLocalWorktreeBaseRef', () => {
     )
   })
 
+  it('preserves a timeout after a SHA has no matching branch name', async () => {
+    const sha = 'a'.repeat(40)
+    const timeout = new GitCommandTimeoutError(120_000)
+    gitExecFileAsync
+      .mockRejectedValueOnce(new Error('no matching branch'))
+      .mockRejectedValueOnce(timeout)
+
+    await expect(hasLocalWorktreeBaseRef(repoPath, sha)).rejects.toBe(timeout)
+    expect(gitExecFileAsync).toHaveBeenLastCalledWith(
+      ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`],
+      { cwd: repoPath }
+    )
+  })
+
   it('reports a base no namespace resolves as absent', async () => {
     resolveOnly([])
 

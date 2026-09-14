@@ -78,6 +78,33 @@ function mockFetchResults(results: unknown[]): void {
 }
 
 describe('OrcaRuntimeService.fetchRemoteWithCache', () => {
+  it.each([undefined, 'Ubuntu'])(
+    'forwards create priority through fetch adapters on %s',
+    async (wslDistro) => {
+      gitExecFileAsyncMock.mockImplementation(async (argv: string[]) => ({
+        stdout: argv[0] === 'remote' ? 'origin\n' : '/priority-repo/.git\n',
+        stderr: ''
+      }))
+      const runtime = new OrcaRuntimeService()
+      const options = { ...(wslDistro ? { wslDistro } : {}), admissionTier: 'interactive' as const }
+      const base = await runtime.resolveRemoteTrackingBase('/priority-repo', 'origin/main', options)
+      expect(base).not.toBeNull()
+      if (!base) {
+        throw new Error('expected a remote base')
+      }
+      await expect(runtime.hasRemoteTrackingRef('/priority-repo', base, options)).resolves.toBe(
+        true
+      )
+      await expect(
+        runtime.getOrStartRemoteTrackingBaseRefresh('/priority-repo', base, options)
+      ).resolves.toEqual({ ok: true })
+      expect(fetchCallCount()).toBe(1)
+      for (const [, execOptions] of gitExecFileAsyncMock.mock.calls) {
+        expect(execOptions).toMatchObject({ cwd: '/priority-repo', ...options })
+      }
+    }
+  )
+
   beforeEach(() => {
     gitExecFileAsyncMock.mockReset()
   })

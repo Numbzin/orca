@@ -6,21 +6,18 @@ import {
   getLocalProjectWorktreeGitOptions,
   getWorktreeMirrorDistro
 } from '../project-runtime-git-options'
-import { getBaseRefDefault, resolveDefaultBaseRefWithLocalGit } from '../git/repo'
+import { resolveDefaultBaseRefWithLocalGit } from '../git/repo'
+import type { LocalGitExecOptions } from '../git/repo-default-base-ref'
 import { resolveLocalGitUsername } from '../git/git-username'
 import { computeWorkspaceRoot, getWorktreePathSettings } from '../ipc/worktree-logic'
 import { resolveWorktreeCreateBase } from '../worktree-create-base'
 import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
 import type { RemoteFetchResult, RemoteTrackingBase } from './runtime-remote-fetch-controller'
 import type { HostedReviewExecutionOptions } from '../source-control/hosted-review-git-options'
-import { hasLocalGitOptions } from './runtime-worktree-selection'
 import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-worktree-create-candidate'
 import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
-
-type LocalGitOptions = { wslDistro?: string }
-type LocalGitArgs = [] | [LocalGitOptions]
 
 export async function createRuntimeLocalManagedWorktree<T>(args: {
   request: RuntimeManagedWorktreeCreateArgs
@@ -31,28 +28,34 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
   resolveRemoteTrackingBase: (
     path: string,
     base: string,
-    ...options: LocalGitArgs
+    options?: LocalGitExecOptions
   ) => Promise<RemoteTrackingBase | null>
   hasRemoteTrackingRef: (
     path: string,
     base: RemoteTrackingBase,
-    ...options: LocalGitArgs
+    options?: LocalGitExecOptions
   ) => Promise<boolean>
   refreshRemoteTrackingBase: (
     path: string,
     base: RemoteTrackingBase,
-    ...options: LocalGitArgs
+    options?: LocalGitExecOptions
   ) => Promise<RemoteFetchResult>
-  fetchRemote: (path: string, remote: string, ...options: LocalGitArgs) => Promise<void>
+  fetchRemote: (path: string, remote: string, options?: LocalGitExecOptions) => Promise<void>
   onWorktreeMetadataPersisted: (worktree: Worktree) => T
 }) {
   const { request, repo, store } = args
   const settings = store.getSettings()
   const pathSettings = getWorktreePathSettings(repo, settings, getWorktreeMirrorDistro(store, repo))
-  const gitExecOptions = getLocalProjectGitExecOptions(store, repo)
+  const gitExecOptions = {
+    ...getLocalProjectGitExecOptions(store, repo),
+    admissionTier: 'interactive' as const
+  }
   const worktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
-  const hasWorktreeGitOptions = hasLocalGitOptions(worktreeGitOptions)
-  const worktreeGitArgs: LocalGitArgs = hasWorktreeGitOptions ? [worktreeGitOptions] : []
+  // Routing-only options stay separate because hosted-review lookups test their emptiness.
+  const interactiveGitOptions: LocalGitExecOptions = {
+    ...worktreeGitOptions,
+    admissionTier: 'interactive'
+  }
   // Username and base resolution are independent read-only probes. Starting
   // both before awaiting removes one serial git/config round trip from create.
   const usernamePromise =
@@ -62,27 +65,20 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
   const baseBranchPromise = resolveWorktreeCreateBase({
     requestedBaseBranch: request.baseBranch,
     repoWorktreeBaseRef: repo.worktreeBaseRef,
-    resolveDefaultBaseRef: () =>
-      hasWorktreeGitOptions
-        ? resolveDefaultBaseRefWithLocalGit(gitExecOptions)
-        : getBaseRefDefault(repo.path),
+    resolveDefaultBaseRef: () => resolveDefaultBaseRefWithLocalGit(gitExecOptions),
     isBaseUsable: async (candidate) => {
       const remoteBase = await args.resolveRemoteTrackingBase(
         repo.path,
         candidate,
-        ...worktreeGitArgs
+        interactiveGitOptions
       )
       if (
         remoteBase &&
-        (await args.hasRemoteTrackingRef(repo.path, remoteBase, ...worktreeGitArgs))
+        (await args.hasRemoteTrackingRef(repo.path, remoteBase, interactiveGitOptions))
       ) {
         return true
       }
-      return hasLocalWorktreeBaseRef(
-        repo.path,
-        candidate,
-        hasWorktreeGitOptions ? worktreeGitOptions : {}
-      )
+      return hasLocalWorktreeBaseRef(repo.path, candidate, interactiveGitOptions)
     }
   })
   const [username, baseBranch] = await Promise.all([usernamePromise, baseBranchPromise])
@@ -101,7 +97,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     store,
     baseBranch,
     localWorktreeGitOptions: worktreeGitOptions,
-    localWorktreeGitOptionArgs: worktreeGitArgs,
+    gitOptions: interactiveGitOptions,
     hostedReviewExecutionContext: args.hostedReviewExecutionContext
   })
   const git = await createRuntimeLocalGitWorktree({
@@ -115,9 +111,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     worktreePath: candidate.worktreePath,
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
-    localWorktreeGitOptions: worktreeGitOptions,
-    hasLocalWorktreeGitOptions: hasWorktreeGitOptions,
-    localWorktreeGitOptionArgs: worktreeGitArgs,
+    localWorktreeGitOptions: interactiveGitOptions,
     resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
     hasRemoteTrackingRef: args.hasRemoteTrackingRef,
     refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
@@ -140,7 +134,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     displayNameKind: candidate.displayNameKind,
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     effectiveCreatedWithAgent: args.createdWithAgent,
-    localWorktreeGitOptions: worktreeGitOptions,
+    localWorktreeGitOptions: interactiveGitOptions,
     onMetadataPersisted: args.onWorktreeMetadataPersisted
   })
   git.rearmPreparation()
