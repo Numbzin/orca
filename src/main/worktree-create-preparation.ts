@@ -68,11 +68,10 @@ function canonicalBaseRef(
   baseBranch: string,
   options: AddWorktreeOptions
 ): Promise<string> {
-  return resolveLocalWorktreeBaseRef(
-    repoPath,
-    baseBranch,
-    options.wslDistro ? { wslDistro: options.wslDistro } : {}
-  )
+  return resolveLocalWorktreeBaseRef(repoPath, baseBranch, {
+    ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
+  })
 }
 
 export async function prepareWorktreeCreateForRepo(
@@ -156,6 +155,7 @@ async function claimPreparedWorktree(
       canonicalBase,
       {
         ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
+        ...(options.admissionTier ? { admissionTier: options.admissionTier } : {}),
         // Why forward it: a cancelled create must stop these probes now, not at the deadline.
         ...(options.signal ? { signal: options.signal } : {})
       }

@@ -100,6 +100,36 @@ afterEach(async () => {
 })
 
 describe('worktree create preparation registry', () => {
+  it.each([undefined, 'Ubuntu'])(
+    'preserves create priority through claim probes on %s',
+    async (wslDistro) => {
+      const routing = wslDistro ? { wslDistro } : {}
+      mocks.getWorktreeOptions.mockReturnValue(routing)
+      await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+      expect(mocks.resolveBaseRef).toHaveBeenLastCalledWith(repo.path, 'origin/main', routing)
+      expect(mocks.prepareCheckout.mock.calls[0]?.[4]).not.toHaveProperty('admissionTier')
+
+      const options = { ...routing, admissionTier: 'interactive' as const }
+      await expect(
+        consumePreparedWorktreeCreate({
+          repoPath: repo.path,
+          workspaceRoot: '/workspace',
+          worktreePath: '/workspace/final',
+          branch: 'feature/test',
+          baseBranch: 'main',
+          options
+        })
+      ).resolves.toMatchObject({ status: 'hit', retargeted: true })
+      expect(mocks.resolveBaseRef).toHaveBeenLastCalledWith(repo.path, 'main', options)
+      expect(mocks.measureDivergence).toHaveBeenCalledWith(
+        repo.path,
+        'refs/remotes/origin/main',
+        'refs/heads/main',
+        options
+      )
+    }
+  )
+
   it('starts the checkout only once the async workspace root resolves', async () => {
     let resolveRoot!: (root: string) => void
     mocks.computeWorkspaceRootAsync.mockReturnValue(
