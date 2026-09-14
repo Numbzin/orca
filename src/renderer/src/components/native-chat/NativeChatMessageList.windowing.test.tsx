@@ -88,15 +88,20 @@ function reservedTranscriptHeight(root: ParentNode): number {
 // bottom and the cases above are about where the window sits, not where it lands.
 function stubLayout({
   scrollGeometry = false,
-  viewportHeight = () => VIEWPORT_PX
+  viewportHeight = () => VIEWPORT_PX,
+  isVisible = () => true
 }: {
   scrollGeometry?: boolean
   viewportHeight?: () => number
+  isVisible?: () => boolean
 } = {}): () => void {
   const scrollTops = new WeakMap<HTMLElement, number>()
   const restores = [
     overrideLayoutProperty('offsetHeight', {
       get(this: HTMLElement): number {
+        if (!isVisible()) {
+          return 0
+        }
         if (this.hasAttribute('data-native-chat-scroll')) {
           return viewportHeight()
         }
@@ -119,21 +124,27 @@ function stubLayout({
     restores.push(
       overrideLayoutProperty('clientHeight', {
         get(this: HTMLElement): number {
-          return this.hasAttribute('data-native-chat-scroll') ? viewportHeight() : 0
+          return this.hasAttribute('data-native-chat-scroll') && isVisible() ? viewportHeight() : 0
         }
       }),
       overrideLayoutProperty('scrollHeight', {
         get(this: HTMLElement): number {
-          return this.hasAttribute('data-native-chat-scroll')
+          return this.hasAttribute('data-native-chat-scroll') && isVisible()
             ? reservedTranscriptHeight(this) + belowTranscriptPx
             : 0
         }
       }),
       overrideLayoutProperty('scrollTop', {
         get(this: HTMLElement): number {
+          if (this.hasAttribute('data-native-chat-scroll') && !isVisible()) {
+            return 0
+          }
           return scrollTops.get(this) ?? 0
         },
         set(this: HTMLElement, value: number): void {
+          if (this.hasAttribute('data-native-chat-scroll') && !isVisible()) {
+            return
+          }
           // A browser clamps; without this `scrollTop = scrollHeight` would park
           // the view past the end and every distance-from-bottom would read 0.
           const max = Math.max(0, this.scrollHeight - this.clientHeight)
@@ -223,10 +234,11 @@ function session(messages: NativeChatMessage[]): NativeChatLiveSession {
   }
 }
 
-function list(messages: NativeChatMessage[]): React.JSX.Element {
+function list(messages: NativeChatMessage[], isVisible = true): React.JSX.Element {
   return (
     <NativeChatMessageList
       session={session(messages)}
+      isVisible={isVisible}
       isWorking={false}
       expandSignal={false}
       fontScale={1}
@@ -257,13 +269,49 @@ function windowState(container: HTMLElement): { totalSize: number; indexes: numb
 }
 
 /** happy-dom fires no scroll event for an assignment to `scrollTop`. */
-function scrollTranscript(container: HTMLElement, top: number): void {
+function scrollRoot(container: HTMLElement): HTMLElement {
   const scroller = container.querySelector<HTMLElement>('[data-native-chat-scroll]')
   if (!scroller) {
     throw new Error('no transcript scroll root')
   }
+  return scroller
+}
+
+function scrollTranscript(container: HTMLElement, top: number): void {
+  const scroller = scrollRoot(container)
   scroller.scrollTop = top
   fireEvent.scroll(scroller)
+}
+
+/** Deliver resize and scroll events to a fixed point, as a painted frame would. */
+function paint(container: HTMLElement): void {
+  const scroller = scrollRoot(container)
+  let lastScrollTop = scroller.scrollTop
+  for (let pass = 0; pass < 12; pass += 1) {
+    let changed = false
+    act(() => {
+      changed = deliverResizes()
+    })
+    if (scroller.scrollTop !== lastScrollTop) {
+      lastScrollTop = scroller.scrollTop
+      fireEvent.scroll(scroller)
+      changed = true
+    }
+    if (!changed) {
+      return
+    }
+  }
+  throw new Error('the transcript never settled: resize and scroll kept moving it')
+}
+
+async function settleVirtualizer(container: HTMLElement): Promise<void> {
+  for (let frame = 0; frame < 2; frame += 1) {
+    paint(container)
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    })
+  }
+  paint(container)
 }
 
 describe('windowed transcript', () => {
@@ -462,6 +510,46 @@ describe('transcript with a hidden scroll root', () => {
       restoreLayout()
     }
   })
+
+  it('preserves a detached viewport when messages append while hidden', async () => {
+    let isVisible = true
+    const restoreLayout = stubLayout({
+      scrollGeometry: true,
+      isVisible: () => isVisible
+    })
+    const restoreResizeObserver = stubResizeObserver()
+    const initialMessages = Array.from({ length: 120 }, (_, index) => marker(index))
+    const appendedMessages = [
+      ...initialMessages,
+      ...Array.from({ length: 20 }, (_, index) => marker(120 + index))
+    ]
+    try {
+      const { container, rerender } = render(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+
+      const scroller = scrollRoot(container)
+      const readingAt = 2_000
+      scrollTranscript(container, readingAt)
+      await settleVirtualizer(container)
+      expect(screen.getByRole('button', { name: /jump to latest/i })).toBeInTheDocument()
+
+      isVisible = false
+      rerender(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+      rerender(list(appendedMessages, isVisible))
+      await settleVirtualizer(container)
+
+      isVisible = true
+      rerender(list(appendedMessages, isVisible))
+      await settleVirtualizer(container)
+
+      expect(scroller.scrollTop).toBe(readingAt)
+      expect(screen.getByRole('button', { name: /jump to latest/i })).toBeInTheDocument()
+    } finally {
+      restoreResizeObserver()
+      restoreLayout()
+    }
+  })
 })
 
 // A row that grows in place: the same message id, more content, a taller measured
@@ -517,38 +605,6 @@ describe('a row growing in place while the view is pinned to the bottom', () => 
         workingStartedAt={TURN_STARTED_AT}
       />
     )
-  }
-
-  function scrollRoot(container: HTMLElement): HTMLElement {
-    const scroller = container.querySelector<HTMLElement>('[data-native-chat-scroll]')
-    if (!scroller) {
-      throw new Error('no transcript scroll root')
-    }
-    return scroller
-  }
-
-  /** One painted frame, repeated to a fixed point: deliver the resize callbacks
-   *  the growth caused, then fire the scroll event a browser fires for any
-   *  `scrollTop` the code wrote itself. Refusing to settle is a failure in its
-   *  own right — that is the view oscillating. */
-  function paint(container: HTMLElement): void {
-    const scroller = scrollRoot(container)
-    let lastScrollTop = scroller.scrollTop
-    for (let pass = 0; pass < 12; pass += 1) {
-      let changed = false
-      act(() => {
-        changed = deliverResizes()
-      })
-      if (scroller.scrollTop !== lastScrollTop) {
-        lastScrollTop = scroller.scrollTop
-        fireEvent.scroll(scroller)
-        changed = true
-      }
-      if (!changed) {
-        return
-      }
-    }
-    throw new Error('the transcript never settled: resize and scroll kept moving it')
   }
 
   function distanceFromBottom(container: HTMLElement): number {

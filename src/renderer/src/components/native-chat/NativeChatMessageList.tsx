@@ -44,6 +44,7 @@ const MAX_EXPANDED_TURNS = 128
 export function NativeChatMessageList({
   session,
   journalItems,
+  isVisible = true,
   isWorking,
   expandSignal,
   fontScale,
@@ -59,6 +60,7 @@ export function NativeChatMessageList({
 }: {
   session: NativeChatLiveSession
   journalItems?: readonly AgentJournalRenderItem[]
+  isVisible?: boolean
   isWorking: boolean
   /** Toolbar-driven desired open state for every tool run; each flip re-syncs. */
   expandSignal: boolean
@@ -198,6 +200,7 @@ export function NativeChatMessageList({
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
     slots,
+    isVisible,
     revealIndex: nativeChatSlotIndexOf(slots, revealedDiff?.messageId)
   })
   const { showJump, onScroll, scrollToBottom, scrollMessageToTop } = useNativeChatTranscriptScroll({

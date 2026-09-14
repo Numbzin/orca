@@ -88,10 +88,12 @@ function rectOffsetWithin(element: HTMLElement, container: HTMLElement): number 
 export function useNativeChatTranscriptWindow({
   scrollRef,
   slots,
+  isVisible,
   revealIndex
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   slots: readonly NativeChatTranscriptSlot[]
+  isVisible: boolean
   /** Slot the transcript was asked to reveal, or -1. */
   revealIndex: number
 }): NativeChatTranscriptWindow {
@@ -135,7 +137,8 @@ export function useNativeChatTranscriptWindow({
     gap: NATIVE_CHAT_ROW_GAP_PX,
     scrollMargin,
     anchorTo: 'end',
-    followOnAppend: true,
+    // A display:none viewport reads as the end; following there erases detached intent.
+    followOnAppend: isVisible,
     scrollEndThreshold: NATIVE_CHAT_BOTTOM_THRESHOLD_PX,
     // Every virtualizer write uses this public adapter, including measurement
     // adjustments and prepend anchoring, so scroll events have one provenance.
@@ -273,7 +276,7 @@ export function useNativeChatTranscriptWindow({
 
   const scrollToEnd = useCallback(() => {
     const container = scrollRef.current
-    if (!container) {
+    if (!isVisible || !container) {
       return
     }
     finishReaderTakeover()
@@ -288,7 +291,7 @@ export function useNativeChatTranscriptWindow({
     if (container.scrollTop !== previous) {
       programmaticScrollMarks.mark(container.scrollTop)
     }
-  }, [finishReaderTakeover, programmaticScrollMarks, scrollRef, virtualizer])
+  }, [finishReaderTakeover, isVisible, programmaticScrollMarks, scrollRef, virtualizer])
 
   const consumeProgrammaticScroll = useCallback(
     (event: Event): boolean => {
