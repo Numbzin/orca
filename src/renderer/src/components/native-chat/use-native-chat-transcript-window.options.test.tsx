@@ -174,6 +174,25 @@ describe('native chat transcript virtualizer contract', () => {
     expect(result.current.consumeProgrammaticScroll(new Event('scroll'))).toBe(true)
   })
 
+  it('restores a detached offset through the virtualizer', () => {
+    const scrollElement = document.createElement('div')
+    virtualizerMock.scrollElement.current = scrollElement
+    const { result } = renderHook(() =>
+      useNativeChatTranscriptWindow({
+        scrollRef: { current: scrollElement },
+        slots: [slot('message-0')],
+        isVisible: true,
+        revealIndex: -1
+      })
+    )
+
+    result.current.restoreScrollOffset(320)
+
+    expect(virtualizerMock.scrollToOffset).toHaveBeenCalledExactlyOnceWith(320, {
+      behavior: 'auto'
+    })
+  })
+
   it('lets an explicit reveal supersede a pending reader takeover', () => {
     const scrollElement = document.createElement('div')
     const target = document.createElement('div')

@@ -54,11 +54,13 @@ export function useNativeChatTranscriptScroll({
   itemCount,
   isWorking,
   showTypingIndicator,
+  isVisible,
   hasMore,
   loadingEarlier,
   loadEarlier,
   alignToViewportTop,
   scrollToEnd,
+  restoreScrollOffset,
   consumeProgrammaticScroll,
   reconcileReaderScroll
 }: {
@@ -67,23 +69,28 @@ export function useNativeChatTranscriptScroll({
   itemCount: number
   isWorking: boolean
   showTypingIndicator: boolean
+  isVisible: boolean
   hasMore: boolean
   loadingEarlier: boolean
   loadEarlier: () => void
   alignToViewportTop: (element: HTMLElement) => void
   scrollToEnd: () => void
+  restoreScrollOffset: (offset: number) => void
   consumeProgrammaticScroll: (event: Event) => boolean
   reconcileReaderScroll: (isTakingOver: boolean) => void
 }): NativeChatTranscriptScroll {
   const [showJump, setShowJump] = useState(false)
   const followingRef = useRef(true)
+  const detachedScrollTopRef = useRef<number | null>(null)
+  const isVisibleRef = useRef(isVisible)
+  const previousIsVisibleRef = useRef(isVisible)
   const previousScrollTopRef = useRef(0)
   const loadEarlierRequestedAtRef = useRef<number | null>(null)
 
   const syncScrollState = useCallback(
     (event?: Event): ScrollGeometry | null => {
       const element = scrollRef.current
-      if (!hasMeasurableViewport(element)) {
+      if (!isVisibleRef.current || !hasMeasurableViewport(element)) {
         return null
       }
       const geometry = geometryOf(element)
@@ -100,6 +107,7 @@ export function useNativeChatTranscriptScroll({
           reconcileReaderScroll(wasFollowing && !following)
         }
       }
+      detachedScrollTopRef.current = followingRef.current ? null : geometry.scrollTop
       setShowJump(shouldShowJumpToLatest(followingRef.current, geometry))
       return geometry
     },
@@ -155,10 +163,27 @@ export function useNativeChatTranscriptScroll({
   )
 
   useLayoutEffect(() => {
-    if (followingRef.current) {
-      scrollToEndWhenMeasurable()
+    const revealed = isVisible && !previousIsVisibleRef.current
+    isVisibleRef.current = isVisible
+    previousIsVisibleRef.current = isVisible
+    if (!isVisible) {
+      return
     }
-  }, [itemCount, isWorking, showTypingIndicator, scrollToEndWhenMeasurable])
+    if (!followingRef.current) {
+      if (revealed && detachedScrollTopRef.current !== null) {
+        restoreScrollOffset(detachedScrollTopRef.current)
+      }
+      return
+    }
+    scrollToEndWhenMeasurable()
+  }, [
+    isVisible,
+    itemCount,
+    isWorking,
+    restoreScrollOffset,
+    showTypingIndicator,
+    scrollToEndWhenMeasurable
+  ])
 
   useEffect(() => {
     const element = scrollRef.current

@@ -45,6 +45,8 @@ export type NativeChatTranscriptWindow = {
    *  browser's real max scroll, so this lands where the document bottom is,
    *  trailing chrome included. */
   scrollToEnd: () => void
+  /** Restore a detached reader offset through the virtualizer's scroll owner. */
+  restoreScrollOffset: (offset: number) => void
   /** True when this scroll event is the echo of a registered application write. */
   consumeProgrammaticScroll: (event: Event) => boolean
   /** Rebase a pending end reconcile while the reader takes over this frame. */
@@ -293,6 +295,26 @@ export function useNativeChatTranscriptWindow({
     }
   }, [finishReaderTakeover, isVisible, programmaticScrollMarks, scrollRef, virtualizer])
 
+  const restoreScrollOffset = useCallback(
+    (offset: number) => {
+      const container = scrollRef.current
+      if (!isVisible || !container) {
+        return
+      }
+      finishReaderTakeover()
+      if (virtualizer.scrollElement) {
+        virtualizer.scrollToOffset(offset, { behavior: 'auto' })
+        return
+      }
+      const previous = container.scrollTop
+      container.scrollTop = offset
+      if (container.scrollTop !== previous) {
+        programmaticScrollMarks.mark(container.scrollTop)
+      }
+    },
+    [finishReaderTakeover, isVisible, programmaticScrollMarks, scrollRef, virtualizer]
+  )
+
   const consumeProgrammaticScroll = useCallback(
     (event: Event): boolean => {
       const container = scrollRef.current
@@ -339,6 +361,7 @@ export function useNativeChatTranscriptWindow({
     measureRow: virtualizer.measureElement,
     alignToViewportTop,
     scrollToEnd,
+    restoreScrollOffset,
     consumeProgrammaticScroll,
     reconcileReaderScroll
   }

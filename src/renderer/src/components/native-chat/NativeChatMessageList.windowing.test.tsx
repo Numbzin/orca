@@ -536,8 +536,14 @@ describe('transcript with a hidden scroll root', () => {
       isVisible = false
       rerender(list(initialMessages, isVisible))
       await settleVirtualizer(container)
-      rerender(list(appendedMessages, isVisible))
-      await settleVirtualizer(container)
+      const scrollTo = vi.spyOn(scroller, 'scrollTo')
+      try {
+        rerender(list(appendedMessages, isVisible))
+        await settleVirtualizer(container)
+        expect(scrollTo).not.toHaveBeenCalled()
+      } finally {
+        scrollTo.mockRestore()
+      }
 
       isVisible = true
       rerender(list(appendedMessages, isVisible))
@@ -545,6 +551,82 @@ describe('transcript with a hidden scroll root', () => {
 
       expect(scroller.scrollTop).toBe(readingAt)
       expect(screen.getByRole('button', { name: /jump to latest/i })).toBeInTheDocument()
+    } finally {
+      restoreResizeObserver()
+      restoreLayout()
+    }
+  })
+
+  it('preserves a detached viewport when a structured session catches up after reveal', async () => {
+    let isVisible = true
+    const restoreLayout = stubLayout({
+      scrollGeometry: true,
+      isVisible: () => isVisible
+    })
+    const restoreResizeObserver = stubResizeObserver()
+    const initialMessages = Array.from({ length: 120 }, (_, index) => marker(index))
+    const appendedMessages = [
+      ...initialMessages,
+      ...Array.from({ length: 20 }, (_, index) => marker(120 + index))
+    ]
+    try {
+      const { container, rerender } = render(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+
+      const scroller = scrollRoot(container)
+      const readingAt = 2_000
+      scrollTranscript(container, readingAt)
+      await settleVirtualizer(container)
+      expect(screen.getByRole('button', { name: /jump to latest/i })).toBeInTheDocument()
+
+      isVisible = false
+      rerender(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+      isVisible = true
+      rerender(list(initialMessages, isVisible))
+      // The resumed transport can publish catch-up before the reveal write emits a scroll event.
+      rerender(list(appendedMessages, isVisible))
+      await settleVirtualizer(container)
+
+      expect(scroller.scrollTop).toBe(readingAt)
+      expect(screen.getByRole('button', { name: /jump to latest/i })).toBeInTheDocument()
+    } finally {
+      restoreResizeObserver()
+      restoreLayout()
+    }
+  })
+
+  it('catches a following viewport up after messages append while hidden', async () => {
+    let isVisible = true
+    const restoreLayout = stubLayout({
+      scrollGeometry: true,
+      isVisible: () => isVisible
+    })
+    const restoreResizeObserver = stubResizeObserver()
+    const initialMessages = Array.from({ length: 120 }, (_, index) => marker(index))
+    const appendedMessages = [
+      ...initialMessages,
+      ...Array.from({ length: 20 }, (_, index) => marker(120 + index))
+    ]
+    try {
+      const { container, rerender } = render(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+
+      isVisible = false
+      rerender(list(initialMessages, isVisible))
+      await settleVirtualizer(container)
+      rerender(list(appendedMessages, isVisible))
+      await settleVirtualizer(container)
+
+      isVisible = true
+      rerender(list(appendedMessages, isVisible))
+      await settleVirtualizer(container)
+
+      const scroller = scrollRoot(container)
+      expect(
+        scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
+      ).toBeLessThanOrEqual(NATIVE_CHAT_BOTTOM_THRESHOLD_PX)
+      expect(screen.queryByRole('button', { name: /jump to latest/i })).toBeNull()
     } finally {
       restoreResizeObserver()
       restoreLayout()
