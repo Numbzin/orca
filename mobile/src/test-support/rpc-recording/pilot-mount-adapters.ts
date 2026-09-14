@@ -14,6 +14,7 @@ export function pilotMountAdapters(
   options: { reference?: boolean; mutation?: Mutation } = {}
 ) {
   const modules = operationModuleLoader(root, options.mutation)
+
   const adapters: Record<string, MountAdapter> = {
     ...settingsMountAdapters(modules),
     ...workspaceSettingsMounts(modules),
@@ -25,44 +26,56 @@ export function pilotMountAdapters(
       const useSearch = modules.load<
         typeof import('../../session/use-mobile-native-chat-file-search')
       >('mobile/src/session/use-mobile-native-chat-file-search.ts').useMobileNativeChatFileSearch
+
       const operations = options.reference
         ? modules
             .load('mobile/src/session/native-host-session-native-chat-operations.ts')
             .nativeHostSessionNativeChatOperations(client)
         : undefined
+
       let workspace = 'A'
       let state: ReturnType<typeof useSearch>
+
       const hook = hookMount(() => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the recorder supplies only the members the hook reads.
         state = useSearch({ client, operations, worktreeId: workspace } as Parameters<
           typeof useSearch
         >[0])
       })
+
       return {
         action(name, args) {
           if (name === 'mount' || name === 'remount') {
             return hook.mount()
           }
+
           if (name === 'unmount') {
             return hook.unmount()
           }
+
           if (name === 'select') {
             workspace = String(args.workspace)
+
             return hook.update()
           }
+
           if (name === 'reset') {
             const previous = workspace
             workspace = `${workspace}-reset`
             hook.update()
             workspace = previous
+
             return hook.update()
           }
+
           if (name === 'query') {
             return performHookAction(() => state.loadNativeChatFiles(String(args.query)))
           }
+
           if (name === 'blur') {
             return
           }
+
           throw new Error(`Unknown inventory action: ${name}`)
         },
         state: () => ({ files: state?.nativeChatFilePaths ?? [] }),
@@ -75,11 +88,13 @@ export function pilotMountAdapters(
       >(
         'mobile/src/tasks/use-mobile-tasks-project-metadata-actions.tsx'
       ).useMobileTasksProjectMetadataActions
+
       const row = {
         id: 'item-1',
         itemType: 'ISSUE',
         content: { repository: 'owner/repo', number: 1, labels: [], assignees: [] }
       }
+
       const model = observableModel(context, {
         projectMutating: false,
         projectRowDetailError: '',
@@ -88,10 +103,12 @@ export function pilotMountAdapters(
         projectRowDetail: null,
         projectFieldDrafts: {}
       })
+
       Object.assign(model, {
         client: context.client,
         activeGitHubProjectHost: 'github.enterprise.test'
       })
+
       if (options.reference) {
         model.taskOperations = {
           projectMutation: modules
@@ -99,16 +116,20 @@ export function pilotMountAdapters(
             .nativeHostTaskProjectMutationOperations(context.client)
         }
       }
+
       let actions: ReturnType<typeof useMetadata>
+
       const hook = hookMount(() => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the recorder supplies only the members the hook reads.
         actions = useMetadata(model as unknown as Parameters<typeof useMetadata>[0])
       })
+
       return {
         action(name) {
           if (name === 'mount') {
             return hook.mount()
           }
+
           if (name === 'submit') {
             return actions.mutateProjectRowMetadata(
               // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the scenario supplies the row as JSON, not as a typed model.
@@ -116,6 +137,7 @@ export function pilotMountAdapters(
               { addLabels: ['recorded'] }
             )
           }
+
           throw new Error(`Unknown project action: ${name}`)
         },
         state: () => ({
@@ -130,6 +152,7 @@ export function pilotMountAdapters(
       const useDetail = modules.load<
         typeof import('../../tasks/use-mobile-tasks-item-detail-loading')
       >('mobile/src/tasks/use-mobile-tasks-item-detail-loading.tsx').useMobileTasksItemDetailLoading
+
       const model = observableModel(context, {
         actionItem: {
           provider: 'linear',
@@ -140,7 +163,9 @@ export function pilotMountAdapters(
         detailPayload: null,
         items: []
       })
+
       Object.assign(model, { client: context.client, tasksSupported: true, detailRefreshSeq: 0 })
+
       if (options.reference) {
         model.taskOperations = {
           detail: modules
@@ -148,25 +173,32 @@ export function pilotMountAdapters(
             .nativeHostTaskDetailOperations(context.client)
         }
       }
+
       const hook = hookMount(() => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the recorder supplies only the members the hook reads.
         useDetail(model as unknown as Parameters<typeof useDetail>[0])
       })
+
       return {
         action(name) {
           if (name === 'mount' || name === 'remount') {
             return hook.mount()
           }
+
           if (name === 'unmount') {
             return hook.unmount()
           }
+
           if (name === 'reset') {
             model.detailRefreshSeq = Number(model.detailRefreshSeq) + 1
+
             return hook.update()
           }
+
           if (name === 'blur') {
             return
           }
+
           throw new Error(`Unknown detail action: ${name}`)
         },
         state: () => ({
@@ -181,6 +213,7 @@ export function pilotMountAdapters(
       const load = modules.load<typeof import('../../session/mobile-new-tab-agent-loader')>(
         'mobile/src/session/mobile-new-tab-agent-loader.ts'
       ).loadMobileNewTabAgentOptions
+
       return {
         action: (_name, args) =>
           load({ client, worktreeId: String(args.workspace ?? 'repo-1::/folder') }),
@@ -194,10 +227,12 @@ export function pilotMountAdapters(
       >(
         'mobile/src/tasks/use-mobile-tasks-client-settings-actions.tsx'
       ).useMobileTasksClientSettingsActions
+
       const model = observableModel(context, {
         defaultGitHubPreset: 'all',
         githubProjectSettings: {}
       })
+
       Object.assign(model, {
         client: context.client,
         clientRef: { current: context.client },
@@ -209,27 +244,33 @@ export function pilotMountAdapters(
         trustedOrcaHooks: {}
       })
       let actions: ReturnType<typeof usePreferences>
+
       const hook = hookMount(() => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the recorder supplies only the members the hook reads.
         actions = usePreferences(model as unknown as Parameters<typeof usePreferences>[0])
       })
+
       return {
         action(name, args) {
           if (name === 'mount') {
             return hook.mount()
           }
+
           if (name === 'write') {
             return actions.persistDefaultGitHubPreset(
               // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the preset arrives from the scenario JSON as a string.
               args.preset as Parameters<typeof actions.persistDefaultGitHubPreset>[0]
             )
           }
+
           if (name === 'resume') {
             return actions.persistTaskResumeState({ githubItemsPreset: 'issues' })
           }
+
           if (name === 'trust') {
             return actions.persistSetupHookTrust('repo-1', 'hash-1', false)
           }
+
           throw new Error(`Unknown preferences action: ${name}`)
         },
         state: () => ({ preset: model.defaultGitHubPreset }),
@@ -237,5 +278,6 @@ export function pilotMountAdapters(
       }
     }
   }
+
   return { adapters, assertMutationApplied: modules.assertMutationApplied }
 }

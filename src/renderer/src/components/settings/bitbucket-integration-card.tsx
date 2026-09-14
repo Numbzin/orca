@@ -12,6 +12,7 @@ import { BitbucketCredentialsDialog } from './bitbucket-credentials-dialog'
 import { translate } from '@/i18n/i18n'
 
 const API_TOKEN_DOCS_URL = 'https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/'
+
 const DEFAULT_API_BASE_URL = 'https://api.bitbucket.org/2.0'
 
 export function BitbucketIntegrationCard(): React.JSX.Element {
@@ -30,6 +31,7 @@ export function BitbucketIntegrationCard(): React.JSX.Element {
   const loadConnection = useCallback(async () => {
     try {
       const next = await window.api.bitbucket.status()
+
       if (mountedRef.current) {
         setConnection(next)
       }
@@ -45,9 +47,11 @@ export function BitbucketIntegrationCard(): React.JSX.Element {
   const envManaged = connection?.source === 'environment'
   const storedCredential = connection?.source === 'stored'
   const account = connection?.account ?? statuses.bitbucketAccount
+
   // Only surface a base URL the user actually overrode; the default is noise.
   const baseUrlOverride =
     connection?.baseUrl && connection.baseUrl !== DEFAULT_API_BASE_URL ? connection.baseUrl : null
+
   const authModeLabel = connection?.authMode
     ? connection.authMode === 'token'
       ? translate(
@@ -59,6 +63,7 @@ export function BitbucketIntegrationCard(): React.JSX.Element {
           'Email & API token'
         )
     : null
+
   const credentialSummary = [authModeLabel, baseUrlOverride].filter(Boolean).join(' · ')
 
   const handleConnected = (): void => {
@@ -69,6 +74,7 @@ export function BitbucketIntegrationCard(): React.JSX.Element {
   const handleDisconnect = async (): Promise<void> => {
     setDisconnecting(true)
     setDisconnectError(null)
+
     try {
       await window.api.bitbucket.disconnect()
     } catch (error) {
@@ -88,6 +94,7 @@ export function BitbucketIntegrationCard(): React.JSX.Element {
       if (mountedRef.current) {
         setDisconnecting(false)
       }
+
       void loadConnection()
       refresh()
     }
@@ -227,6 +234,7 @@ function BitbucketCardNote(props: {
       </p>
     )
   }
+
   if (props.envManaged) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -237,6 +245,7 @@ function BitbucketCardNote(props: {
       </p>
     )
   }
+
   if (props.status === 'not-authenticated') {
     return (
       <p className="text-xs text-muted-foreground">
@@ -252,6 +261,7 @@ function BitbucketCardNote(props: {
       </p>
     )
   }
+
   if (props.storedCredential) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -262,6 +272,7 @@ function BitbucketCardNote(props: {
       </p>
     )
   }
+
   return (
     <p className="text-xs text-muted-foreground">
       {translate(

@@ -47,6 +47,7 @@ export async function importExternalPathsToRuntime(
   options?: { ensureDestinationDir?: boolean; assertCurrent?: () => void }
 ): Promise<{ results: RuntimeImportResult[] }> {
   const target = getActiveRuntimeTarget(context.settings)
+
   if (target.kind !== 'environment' || !context.worktreeId || !context.worktreePath) {
     return window.api.fs.importExternalPaths(
       withSshMutationExpectation(context, {
@@ -59,6 +60,7 @@ export async function importExternalPathsToRuntime(
   }
 
   const destinationArgs = getRemoteFileArgs(context, destinationDir)
+
   if (!destinationArgs) {
     throw new Error('Destination is outside the active runtime worktree')
   }
@@ -66,19 +68,23 @@ export async function importExternalPathsToRuntime(
   const expectedEnvironmentPairingRevision = captureRuntimeEnvironmentRequestRevision(
     target.environmentId
   )
+
   const expectedEnvironmentConnectionGeneration = getRuntimeEnvironmentConnectionGeneration(
     target.environmentId
   )
+
   const expectedEnvironmentRuntimeId = await assertRuntimeFileMutationCapability(
     target,
     expectedEnvironmentPairingRevision
   )
+
   const assertImportSessionCurrent = createRuntimeImportSessionGuard(
     target.environmentId,
     expectedEnvironmentPairingRevision,
     expectedEnvironmentConnectionGeneration,
     options?.assertCurrent
   )
+
   const importSession: RuntimeFileImportSession = {
     target,
     expectedEnvironmentPairingRevision,
@@ -86,6 +92,7 @@ export async function importExternalPathsToRuntime(
     expectedEnvironmentRuntimeId,
     assertCurrent: assertImportSessionCurrent
   }
+
   importSession.assertCurrent()
   const staged = await window.api.fs.stageExternalPathsForRuntimeUpload({ sourcePaths })
   importSession.assertCurrent()
@@ -99,7 +106,9 @@ export async function importExternalPathsToRuntime(
       results.push(source)
       continue
     }
+
     let createdDirectoryImportRoot: string | null = null
+
     try {
       const finalName = await deconflictRuntimeImportName(
         context,
@@ -108,10 +117,13 @@ export async function importExternalPathsToRuntime(
         reservedNames,
         importSession
       )
+
       const destPath = joinPath(destinationDir, finalName)
       const destRelativePath = joinRuntimeRelativePath(destinationArgs.relativePath, finalName)
+
       for (const entry of source.entries) {
         const entryRelativePath = joinRuntimeRelativePath(destRelativePath, entry.relativePath)
+
         if (entry.kind === 'directory') {
           await callRuntimeFileImportMutation(
             importSession,
@@ -122,11 +134,14 @@ export async function importExternalPathsToRuntime(
             }),
             15_000
           )
+
           if (source.kind === 'directory' && entry.relativePath === '') {
             createdDirectoryImportRoot = entryRelativePath
           }
+
           continue
         }
+
         await uploadRuntimeFileWithoutClobber(
           importSession,
           context.worktreeId,
@@ -149,6 +164,7 @@ export async function importExternalPathsToRuntime(
               : 'local')
         )
       }
+
       reservedNames.add(finalName)
       results.push({
         sourcePath: source.sourcePath,
@@ -172,6 +188,7 @@ export async function importExternalPathsToRuntime(
           15_000
         ).catch(() => {})
       }
+
       results.push({
         sourcePath: source.sourcePath,
         status: 'failed',
@@ -191,6 +208,7 @@ async function deconflictRuntimeImportName(
   session: RuntimeFileImportSession
 ): Promise<string> {
   session.assertCurrent()
+
   if (
     !(await runtimePathExists(
       context,
@@ -208,6 +226,7 @@ async function deconflictRuntimeImportName(
   const ext = hasMeaningfulExt ? originalName.slice(dotIndex) : ''
   let candidate = `${stem} copy${ext}`
   session.assertCurrent()
+
   if (
     !(await runtimePathExists(
       context,
@@ -220,9 +239,11 @@ async function deconflictRuntimeImportName(
   }
 
   let counter = 2
+
   while (counter < 10000) {
     candidate = `${stem} copy ${counter}${ext}`
     session.assertCurrent()
+
     if (
       !(await runtimePathExists(
         context,
@@ -233,7 +254,9 @@ async function deconflictRuntimeImportName(
     ) {
       return candidate
     }
+
     counter += 1
   }
+
   throw new Error(`Could not generate a unique name for '${basename(originalName)}'`)
 }

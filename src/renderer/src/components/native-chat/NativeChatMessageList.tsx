@@ -78,9 +78,11 @@ export function NativeChatMessageList({
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element {
   const [revealedDiff, setRevealedDiff] = useState<NativeChatDiffReveal | null>(null)
+
   const revealDiff = useCallback((target: NativeChatDiffTarget) => {
     setRevealedDiff((current) => ({ ...target, requestId: (current?.requestId ?? 0) + 1 }))
   }, [])
+
   const receipts = useMemo(
     () =>
       new Map(
@@ -93,24 +95,30 @@ export function NativeChatMessageList({
       ),
     [journalItems]
   )
+
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<string>>(new Set())
   const disclosures = useNativeChatDisclosures()
+
   const toggleExpandedTurn = useCallback((turnKey: string) => {
     setExpandedTurnIds((current) => {
       const next = new Set(current)
+
       if (next.has(turnKey)) {
         next.delete(turnKey)
       } else {
         if (next.size >= MAX_EXPANDED_TURNS) {
           const oldest = next.values().next().value
+
           if (oldest) {
             next.delete(oldest)
           }
         }
+
         next.add(turnKey)
       }
+
       return next
     })
   }, [])
@@ -123,29 +131,38 @@ export function NativeChatMessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session.agent, session.sessionId]
   )
+
   const messages = useMemo(
     () => projectNativeChatTaskListFrames(projectMessages(session.messages)),
     [projectMessages, session.messages]
   )
+
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
+
   const showTypingIndicator = showTurnStatus
     ? isWorking
     : shouldShowNativeChatTypingIndicator({ messages, isWorking })
+
   const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
+
   const currentTurnKey =
     latestUserIndex === -1 ? undefined : (messages[latestUserIndex]?.id ?? undefined)
+
   // Resolve each row's turn boundary once. Prefix slice/findLast in the render
   // loop becomes quadratic for long transcripts.
   const turnKeys = useMemo(() => {
     let currentTurnKey: string | undefined
+
     return messages.map((message) => {
       if (message.role === 'user') {
         currentTurnKey = message.id
       }
+
       return currentTurnKey
     })
   }, [messages])
+
   const turnDiffs = useMemo(
     () =>
       journalItems
@@ -153,12 +170,14 @@ export function NativeChatMessageList({
         : new Map<string, NativeChatTurnDiff>(),
     [journalItems, messages, turnKeys]
   )
+
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
   const thinking = useMemo(
     () => (journalItems ? isStructuredAgentSessionThinking(journalItems) : false),
     [journalItems]
   )
+
   const turnStatuses = useNativeChatTurnStatus({
     messages,
     latestUserIndex,
@@ -167,7 +186,9 @@ export function NativeChatMessageList({
     settledTurns: showTurnStatus ? settledTurns : null,
     thinking
   })
+
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
+
   const slots = useMemo(
     () =>
       buildNativeChatTranscriptSlots({
@@ -195,11 +216,13 @@ export function NativeChatMessageList({
       turnStatuses
     ]
   )
+
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
     slots,
     revealIndex: nativeChatSlotIndexOf(slots, revealedDiff?.messageId)
   })
+
   const { showJump, onScroll, scrollToBottom, scrollMessageToTop } = useNativeChatTranscriptScroll({
     scrollRef,
     contentRef,

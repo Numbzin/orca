@@ -53,13 +53,17 @@ export function handleAgentCompletionInspectionResult(args: {
     dispatchCompletion,
     remoteInspection
   } = args
+
   if (isClientOnlyUnverifiableInspection(result)) {
     state.pendingProcessExitAgent = null
     state.consecutiveInspectionErrors += 1
     scheduleNextPoll()
+
     return false
   }
+
   const remote = options.isRemotePtyId?.(options.getPtyId() ?? '') === true
+
   if (remote) {
     const evidence = result.foregroundProcessEvidence
     // Remote identity is host-authoritative. Compatibility names and unverifiable observations
@@ -67,14 +71,17 @@ export function handleAgentCompletionInspectionResult(args: {
     const expectedIncarnationId = options.getExpectedIncarnationId?.() ?? null
     const ptyId = options.getPtyId()
     const bindingKey = `${ptyId ?? ''}\0${expectedIncarnationId ?? ''}`
+
     if (remoteInspection.bindingKey !== bindingKey) {
       remoteInspection.bindingKey = bindingKey
       remoteInspection.authorityGeneration = null
       remoteInspection.observationEpoch = -1
       remoteInspection.knownAuthorityGenerations.clear()
     }
+
     const expectedRemotePtyId = (id: string): string =>
       parseAppSshPtyId(id)?.relayPtyId ?? getRemoteRuntimeTerminalHandle(id) ?? id
+
     const admitted = admitRemoteForegroundEvidence(evidence, {
       expectedPtyId: ptyId ? expectedRemotePtyId(ptyId) : '',
       expectedIncarnationId,
@@ -84,16 +91,21 @@ export function handleAgentCompletionInspectionResult(args: {
       lastObservationEpoch: remoteInspection.observationEpoch,
       knownAuthorityGenerations: remoteInspection.knownAuthorityGenerations
     })
+
     if (!admitted) {
       state.pendingProcessExitAgent = null
       state.consecutiveInspectionErrors += 1
+
       return false
     }
+
     remoteInspection.authorityGeneration = admitted.authorityGeneration
     remoteInspection.observationEpoch = admitted.observationEpoch
     remoteInspection.knownAuthorityGenerations.add(admitted.authorityGeneration)
+
     if (admitted.verdict === 'exited') {
       const exited = state.lastForegroundAgent
+
       if (exited && state.hasAgentRunEvidence) {
         if (options.shouldSuppressConfirmedProcessExitCompletion?.(exited) !== true) {
           dispatchCompletion('process-exit', exited.processName, {
@@ -106,44 +118,65 @@ export function handleAgentCompletionInspectionResult(args: {
           })
         }
       }
+
       state.lastForegroundAgent = null
       clearAgentRunEvidence()
+
       return false
     }
+
     if (admitted.verdict !== 'live') {
       state.pendingProcessExitAgent = null
+
       return false
     }
+
     state.consecutiveInspectionErrors = 0
+
     if (admitted.processName === null) {
       state.pendingProcessExitAgent = null
+
       return false
     }
+
     const recognizedRemote = recognizeAgentProcess(admitted.processName)
+
     if (!recognizedRemote) {
       state.pendingProcessExitAgent = null
+
       return false
     }
+
     handleRecognizedProcess(recognizedRemote)
+
     return true
   }
+
   state.consecutiveInspectionErrors = 0
   const recognized = recognizeAgentProcess(result.foregroundProcess)
+
   if (recognized) {
     handleRecognizedProcess(recognized)
+
     return true
   }
+
   if (hasPendingHookDone() || hasPendingCodexAttention()) {
     scheduleNextPoll()
+
     return false
   }
+
   if (state.lastForegroundAgent && state.hasAgentRunEvidence) {
     if (result.hasChildProcesses) {
       state.pendingProcessExitAgent = null
       scheduleNextPoll()
+
       return false
     }
+
     const pending = state.pendingProcessExitAgent
+
     if (
       !pending ||
       pending.agent !== state.lastForegroundAgent.agent ||
@@ -151,12 +184,16 @@ export function handleAgentCompletionInspectionResult(args: {
     ) {
       state.pendingProcessExitAgent = state.lastForegroundAgent
       scheduleNextPoll()
+
       return false
     }
+
     const exited = state.lastForegroundAgent
     state.pendingProcessExitAgent = null
+
     if (options.shouldSuppressConfirmedProcessExitCompletion?.(exited) !== true) {
       const replayIdentityBeforeExit = identityScope.getLast()
+
       const committed = dispatchCompletion('process-exit', exited.processName, {
         terminalIdleConfirmed: true,
         completionIdentity: {
@@ -165,6 +202,7 @@ export function handleAgentCompletionInspectionResult(args: {
           agentIdentity: exited.agent
         }
       })
+
       if (
         !committed &&
         !identityScope.hasUnconsumedStampedTail() &&
@@ -174,11 +212,13 @@ export function handleAgentCompletionInspectionResult(args: {
         identityScope.deleteLast()
       }
     }
+
     state.lastForegroundAgent = null
     clearAgentRunEvidence()
   } else {
     state.lastForegroundAgent = null
     clearAgentRunEvidence()
   }
+
   return false
 }

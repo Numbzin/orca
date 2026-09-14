@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { listOmpSubagentSessions } from './session-scanner-omp-subagent-listing'
 
 const SESSION_STEM = '2026-05-01T10-00-00-000Z_cccccccc-dddd-4eee-8fff-000000000000'
+
 const PARENT_SESSION_ID = 'cccccccc-dddd-4eee-8fff-000000000000'
 
 let tempRoots: string[] = []

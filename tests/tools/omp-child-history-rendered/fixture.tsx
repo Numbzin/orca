@@ -27,6 +27,7 @@ const parent: AiVaultSession = {
   resumeCommand: 'omp --resume parent',
   subagent: null
 }
+
 const children: AiVaultSession[] = [
   {
     ...parent,
@@ -52,11 +53,14 @@ const children: AiVaultSession[] = [
     subagent: { parentSessionId: 'parent', agentType: 'worker', status: 'stopped' }
   }
 ]
+
 Object.defineProperty(window, 'api', {
   value: { aiVault: { listSubagentSessions: async () => ({ sessions: children, issues: [] }) } }
 })
+
 function App() {
   const [result, setResult] = useState('No resume requested')
+
   return (
     <TooltipProvider>
       <main className="p-6 bg-background text-foreground space-y-4">
@@ -77,4 +81,5 @@ function App() {
     </TooltipProvider>
   )
 }
+
 createRoot(document.getElementById('root')!).render(<App />)

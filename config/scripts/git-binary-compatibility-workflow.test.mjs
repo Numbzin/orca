@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 describe('Git binary compatibility PR gate', () => {
   it('runs the real-binary contract at each compatibility boundary', () => {
     const workflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
+
     const step = workflow.jobs.git_compatibility.steps.find(
       (candidate) => candidate.name === 'Verify Git binary compatibility matrix'
     )
@@ -28,6 +29,7 @@ describe('Git binary compatibility PR gate', () => {
     const workflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
     const steps = workflow.jobs.git_compatibility.steps
     const cacheIndex = steps.findIndex((step) => step.name === 'Cache baseline Git build')
+
     const matrixIndex = steps.findIndex(
       (step) => step.name === 'Verify Git binary compatibility matrix'
     )

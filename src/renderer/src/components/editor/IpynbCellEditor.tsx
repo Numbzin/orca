@@ -68,18 +68,23 @@ function IpynbCodeCellEditor({
   const editorHeight = getIpynbCodeCellEditorHeight(source, fontSize)
   const isDark = resolveDocumentTheme(settings?.theme ?? 'system')
   const lines = useMemo(() => getIpynbCodeCellPreviewLines(source), [source])
+
   const handleMount: OnMount = useCallback((editorInstance, monacoInstance) => {
     editorInstance.focus()
+
     const cleanupSaveShortcut = installEditorSaveShortcut(
       editorInstance.getContainerDomNode(),
       () => {
         void onSaveRequestRef.current()
       }
     )
+
     const cleanupFindShortcut = installMonacoEditorFindShortcut(editorInstance)
+
     const blurSub = editorInstance.onDidBlurEditorWidget(() => {
       onDeactivateRef.current()
     })
+
     editorInstance.onDidDispose(() => {
       cleanupSaveShortcut()
       cleanupFindShortcut()

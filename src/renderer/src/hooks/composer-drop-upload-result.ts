@@ -26,6 +26,7 @@ export function collectComposerDropUploadResult(
       skippedOrFailed += 1
       continue
     }
+
     if (result.kind === 'directory') {
       folderPaths.push(result.destPath)
     } else {

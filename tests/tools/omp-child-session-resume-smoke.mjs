@@ -8,21 +8,36 @@ import { buildAiVaultResumeCommand } from '../../src/shared/ai-vault-resume-comm
 import { tokenizeStartupCommand } from '../../src/shared/tui-agent-startup-shell.ts'
 
 assert.ok(process.argv[2], 'Pass a read-only OMP checkout path')
+
 const scratch = await mkdtemp(join(tmpdir(), 'orca-omp-child-resume-'))
+
 process.env.HOME = join(scratch, 'home')
+
 process.env.USERPROFILE = process.env.HOME
+
 process.env.XDG_CONFIG_HOME = join(scratch, 'config')
+
 process.env.XDG_DATA_HOME = join(scratch, 'data')
+
 process.env.XDG_STATE_HOME = join(scratch, 'state')
+
 process.env.PI_CODING_AGENT_DIR = join(scratch, 'agent')
+
 delete process.env.OMP_CODING_AGENT_DIR
+
 delete process.env.PI_CONFIG_DIR
+
 delete process.env.OMP_PROFILE
+
 delete process.env.PI_PROFILE
+
 delete process.env.PI_CONFIG_FILES
+
 const source = (name) =>
   pathToFileURL(join(resolve(process.argv[2]), 'packages/coding-agent/src', name)).href
+
 const managers = []
+
 try {
   await mkdir(process.env.HOME, { recursive: true })
   const { SessionManager } = await import(source('session/session-manager.ts'))
@@ -41,6 +56,7 @@ try {
   child.appendMessage({ role: 'user', content: 'child task', timestamp: Date.now() })
   await child.ensureOnDisk()
   await child.flush()
+
   const command = buildAiVaultResumeCommand({
     agent: 'omp',
     sessionId: child.getSessionId(),
@@ -49,6 +65,7 @@ try {
     platform: process.platform,
     shell: 'posix'
   })
+
   const tokens = tokenizeStartupCommand(command, 'posix')
   assert.ok(tokens.ok)
   const args = parseArgs(tokens.tokens.slice(1))
@@ -70,5 +87,6 @@ try {
   for (const manager of managers) {
     await manager?.close()
   }
+
   await rm(scratch, { recursive: true, force: true })
 }

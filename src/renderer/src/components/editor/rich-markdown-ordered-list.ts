@@ -11,6 +11,7 @@ export const RichMarkdownOrderedList = OrderedList.extend({
       if (typeof baseTokenizer.start === 'function' && baseTokenizer.start(src) !== 0) {
         return undefined
       }
+
       return baseTokenizer.tokenize(src, tokens, lexer)
     }
   }

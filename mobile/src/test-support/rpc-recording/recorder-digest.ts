@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, posix } from 'node:path'
 
 export const RECORDER_DIRECTORY = 'mobile/src/test-support/rpc-recording'
+
 const digests = new Map<string, string>()
 
 function collect(root: string, relative: string, files: string[]): void {
@@ -10,6 +11,7 @@ function collect(root: string, relative: string, files: string[]): void {
     a.name < b.name ? -1 : 1
   )) {
     const child = `${relative}/${entry.name}`
+
     if (entry.isDirectory()) {
       collect(root, child, files)
     } else if (!entry.name.endsWith('.md')) {
@@ -30,11 +32,14 @@ function collect(root: string, relative: string, files: string[]): void {
  */
 export function recorderSha256(root: string): string {
   const cached = digests.get(root)
+
   if (cached !== undefined) {
     return cached
   }
+
   const files: string[] = []
   collect(root, RECORDER_DIRECTORY, files)
+
   const digest = createHash('sha256')
     .update(
       files
@@ -42,6 +47,8 @@ export function recorderSha256(root: string): string {
         .join('\n')
     )
     .digest('hex')
+
   digests.set(root, digest)
+
   return digest
 }

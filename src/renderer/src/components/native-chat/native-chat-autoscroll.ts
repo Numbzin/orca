@@ -40,6 +40,7 @@ export function shouldShowJumpToLatest(
   if (isStuckToBottom) {
     return false
   }
+
   return distanceFromBottom(geometry) > threshold
 }
 
@@ -58,6 +59,7 @@ export function nextFollowingEnd(intent: FollowIntent): boolean {
   if (intent.programmatic) {
     return intent.following
   }
+
   return intent.atEnd
 }
 
@@ -87,11 +89,14 @@ export function shouldLoadEarlier(intent: LoadEarlierIntent): boolean {
   if (!intent.hasMore || intent.loadingEarlier) {
     return false
   }
+
   if (intent.geometry.scrollTop >= NATIVE_CHAT_LOAD_EARLIER_THRESHOLD_PX) {
     return false
   }
+
   if (intent.geometry.scrollTop > intent.previousScrollTop) {
     return false
   }
+
   return intent.requestedAtItemCount !== intent.itemCount
 }

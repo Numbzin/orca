@@ -26,6 +26,7 @@ import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 export const NATIVE_CHAT_WINDOW_OVERSCAN = 6
 
 const FALLBACK_ROW_PX = 48
+
 /** Retired keys are harmless to layout but otherwise accumulate for the pane's
  *  lifetime as a capped transcript advances. Compact them well before the stale
  *  entries become material compared with the live window. */
@@ -61,6 +62,7 @@ export function nativeChatScrollOffsetWithin(
 ): number | null {
   let top = 0
   let node: HTMLElement | null = element
+
   while (node !== null && node !== container) {
     top += node.offsetTop
     // A DOM without layout has no `offsetParent` at all; that ends the chain
@@ -69,6 +71,7 @@ export function nativeChatScrollOffsetWithin(
     const parent = node.offsetParent as HTMLElement | null | undefined
     node = parent && typeof parent.offsetTop === 'number' ? parent : null
   }
+
   return node === container ? top : null
 }
 
@@ -78,10 +81,12 @@ export function nativeChatScrollOffsetWithin(
  *  distance, which leaves the offset where it already is. */
 function rectOffsetWithin(element: HTMLElement, container: HTMLElement): number {
   const containerRect = container.getBoundingClientRect()
+
   const zoom =
     container.offsetHeight > 0 && containerRect.height > 0
       ? containerRect.height / container.offsetHeight
       : 1
+
   return container.scrollTop + (element.getBoundingClientRect().top - containerRect.top) / zoom
 }
 
@@ -101,19 +106,24 @@ export function useNativeChatTranscriptWindow({
   const readerTakeoverFrameRef = useRef<number | null>(null)
   const previousMeasurementKeysRef = useRef<ReadonlySet<string> | null>(null)
   const retiredMeasurementCountRef = useRef(0)
+
   const pinned = useMemo(
     () => nativeChatPinnedRowIndexes({ count: slots.length, revealIndex }),
     [slots.length, revealIndex]
   )
+
   // A content-only tail revision must not rebuild measured offsets: doing so
   // breaks the end anchor while the row grows. Structural changes replace it.
   const encodedItemKeys = JSON.stringify(slots.map((slot) => slot.message.id))
   const itemKeys = useMemo(() => JSON.parse(encodedItemKeys) as string[], [encodedItemKeys])
+
   const estimateSize = useCallback(
     (index: number) => slots[index]?.estimatedHeight ?? FALLBACK_ROW_PX,
     [slots]
   )
+
   const getItemKey = useCallback((index: number) => itemKeys[index] ?? index, [itemKeys])
+
   // Identity tracks the pinned set on purpose. The virtualizer memoizes the
   // mounted indexes on this function, so a stable one would keep serving the
   // range from before a row was pinned — and a reveal would point at a row that
@@ -142,22 +152,28 @@ export function useNativeChatTranscriptWindow({
     scrollToFn: (offset, options, instance) => {
       const target = offset + (options.adjustments ?? 0)
       const element = instance.scrollElement
+
       if (options.behavior === 'smooth') {
         if (element) {
           const max = Math.max(0, element.scrollHeight - element.clientHeight)
           const landing = Math.max(0, Math.min(target, max))
+
           if (element.scrollTop !== landing) {
             programmaticScrollMarks.mark(landing)
           }
         }
+
         elementScroll(offset, options, instance)
+
         return
       }
+
       const previous = element?.scrollTop
       elementScroll(offset, options, instance)
       // Scroll events dispatch later; read back now so a clamp against the old
       // document height stays attributable if content grows before its echo.
       const landing = element?.scrollTop
+
       if (previous !== undefined && landing !== undefined && landing !== previous) {
         programmaticScrollMarks.mark(landing)
       }
@@ -170,6 +186,7 @@ export function useNativeChatTranscriptWindow({
       readerTakeoverFrameRef.current = null
     }
   }, [])
+
   useEffect(() => finishReaderTakeover, [finishReaderTakeover])
 
   // Read, never assumed: the "load earlier" button sits above the window and
@@ -178,30 +195,39 @@ export function useNativeChatTranscriptWindow({
   const readScrollMargin = useCallback(() => {
     const container = scrollRef.current
     const sizer = sizerElementRef.current
+
     if (!container || !sizer) {
       return
     }
+
     // Only the offset chain, never the rect fallback: a container with no
     // layout would report the scroll position itself as the margin, which would
     // hold the window at the top of the transcript no matter where it scrolled.
     const offset = nativeChatScrollOffsetWithin(sizer, container)
+
     if (offset !== null) {
       setScrollMargin((current) => (current === offset ? current : offset))
     }
   }, [scrollRef])
+
   useLayoutEffect(readScrollMargin)
 
   useLayoutEffect(() => {
     const container = scrollRef.current
+
     if (!container) {
       return
     }
+
     readScrollMargin()
+
     if (typeof ResizeObserver === 'undefined') {
       return
     }
+
     const observer = new ResizeObserver(readScrollMargin)
     observer.observe(container)
+
     return () => observer.disconnect()
   }, [readScrollMargin, scrollRef])
 
@@ -209,6 +235,7 @@ export function useNativeChatTranscriptWindow({
     const currentKeys = new Set(itemKeys)
     const previousKeys = previousMeasurementKeysRef.current
     previousMeasurementKeysRef.current = currentKeys
+
     if (previousKeys !== null) {
       for (const key of previousKeys) {
         if (!currentKeys.has(key)) {
@@ -216,6 +243,7 @@ export function useNativeChatTranscriptWindow({
         }
       }
     }
+
     if (retiredMeasurementCountRef.current < MAX_RETIRED_NATIVE_CHAT_MEASUREMENTS) {
       return
     }
@@ -223,22 +251,27 @@ export function useNativeChatTranscriptWindow({
     const retainedMeasurements = virtualizer
       .takeSnapshot()
       .filter((item) => typeof item.key === 'string' && currentKeys.has(item.key))
+
     const scrollTop = scrollRef.current?.scrollTop
     virtualizer.measure()
     // Materialize the estimate-only layout before restoring retained sizes.
     virtualizer.getTotalSize()
+
     for (const item of retainedMeasurements) {
       virtualizer.resizeItem(item.index, item.size)
     }
+
     if (scrollTop !== undefined) {
       virtualizer.scrollToOffset(scrollTop)
     }
+
     retiredMeasurementCountRef.current = 0
   }, [itemKeys, scrollRef, virtualizer])
 
   const sizerRef = useCallback(
     (node: HTMLDivElement | null) => {
       sizerElementRef.current = node
+
       if (node) {
         readScrollMargin()
       }
@@ -249,12 +282,16 @@ export function useNativeChatTranscriptWindow({
   const alignToViewportTop = useCallback(
     (element: HTMLElement) => {
       const container = scrollRef.current
+
       if (!container) {
         return
       }
+
       const top =
         nativeChatScrollOffsetWithin(element, container) ?? rectOffsetWithin(element, container)
+
       finishReaderTakeover()
+
       // Through the virtualizer so a scroll it is still reconciling — the jump
       // that mounted this row in the first place — is replaced rather than raced.
       if (virtualizer.scrollElement) {
@@ -262,9 +299,11 @@ export function useNativeChatTranscriptWindow({
       } else {
         const max = Math.max(0, container.scrollHeight - container.clientHeight)
         const landing = Math.max(0, Math.min(top, max))
+
         if (container.scrollTop !== landing) {
           programmaticScrollMarks.mark(landing)
         }
+
         container.scrollTo({ top, behavior: 'smooth' })
       }
     },
@@ -273,18 +312,24 @@ export function useNativeChatTranscriptWindow({
 
   const scrollToEnd = useCallback(() => {
     const container = scrollRef.current
+
     if (!container) {
       return
     }
+
     finishReaderTakeover()
+
     if (virtualizer.scrollElement) {
       virtualizer.scrollToEnd({ behavior: 'auto' })
+
       return
     }
+
     // No virtualizer yet (a container without layout): the document's own bottom
     // is the same offset the virtualizer would resolve for the last row.
     const previous = container.scrollTop
     container.scrollTop = container.scrollHeight
+
     if (container.scrollTop !== previous) {
       programmaticScrollMarks.mark(container.scrollTop)
     }
@@ -293,9 +338,11 @@ export function useNativeChatTranscriptWindow({
   const consumeProgrammaticScroll = useCallback(
     (event: Event): boolean => {
       const container = scrollRef.current
+
       if (!container) {
         return false
       }
+
       return programmaticScrollMarks.consume(
         event,
         container.scrollTop,
@@ -308,6 +355,7 @@ export function useNativeChatTranscriptWindow({
   const reconcileReaderScroll = useCallback(
     (isTakingOver: boolean) => {
       const container = scrollRef.current
+
       if (
         !container ||
         !virtualizer.scrollElement ||
@@ -315,10 +363,13 @@ export function useNativeChatTranscriptWindow({
       ) {
         return
       }
+
       virtualizer.scrollToOffset(container.scrollTop, { behavior: 'auto' })
+
       if (readerTakeoverFrameRef.current !== null) {
         return
       }
+
       // The public rebase itself reconciles on the next frame. Keep replacing its
       // target until that frame so every reader move in the takeover wins.
       readerTakeoverFrameRef.current = window.requestAnimationFrame(() => {

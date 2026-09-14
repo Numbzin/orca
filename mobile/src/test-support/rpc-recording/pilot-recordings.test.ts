@@ -18,11 +18,14 @@ import type { Mutation } from './operation-mutations'
 import { determinismRuns } from './determinism-runs'
 
 const root = resolve(import.meta.dirname, '../../../..')
+
 const input = readScenarios(
   process.env.RPC_FOUNDATION_SCENARIOS ??
     resolve(root, 'mobile/rpc-foundation/pilot-scenarios.json')
 )
+
 const goldens = process.env.RPC_FOUNDATION_GOLDENS ?? resolve(root, 'mobile/rpc-foundation/goldens')
+
 // One mutant per adapter family, so every family's state projection is shown to be load-bearing.
 const mutants: Record<string, Mutation> = {
   b1: 'race',
@@ -37,6 +40,7 @@ const mutants: Record<string, Mutation> = {
   'settings-workspace-submit-fulfilled': 'workspace-submit-envelope',
   'settings-task-workspace-fulfilled': 'task-workspace-envelope'
 }
+
 /**
  * The archived tree's visible state, pinned per seed: b1 serves the poisoned empty inventory, b2
  * accepts the null envelope and applies the label anyway, and b3 reports the issue error instead of
@@ -71,33 +75,42 @@ describe('RPC main recordings', () => {
     const { id, scenario } = pilot
     it(pilot.title, async () => {
       let first = ''
+
       for (let run = 0; run < determinismRuns(); run++) {
         const { adapters } = pilotMountAdapters(root)
+
         const recording = await runRecording(
           scenario,
           adapters[scenario.operation],
           vitestRecordingScheduler()
         )
+
         if (id === 'b1') {
           expect(visibleState(recording)).toEqual({ files: ['third.ts'] })
         }
+
         if (id === 'b2') {
           expect(visibleState(recording)).toMatchObject({
             error: "Cannot read properties of null (reading 'ok')"
           })
         }
+
         if (id === 'b3') {
           expect(visibleState(recording)).toMatchObject({
             error: 'comments transport error',
             loading: false
           })
         }
+
         const golden = goldenRecording(root, input.baseline, pilot.scenarios(), recording)
         const bytes = goldenBytes(golden)
+
         if (run) {
           expect(bytes).toBe(first)
         }
+
         first = bytes
+
         if (process.env.RPC_FOUNDATION_MODE === '--record') {
           await writeGolden(goldens, golden, '--record')
         } else {
@@ -106,11 +119,14 @@ describe('RPC main recordings', () => {
       }
     })
     const mutation = mutants[id]
+
     if (!mutation) {
       continue
     }
+
     it(`${id}: kills ${mutation}`, async () => {
       const { adapters, assertMutationApplied } = pilotMountAdapters(root, { mutation })
+
       const result = await runRecordingMutant(
         scenario,
         adapters[scenario.operation],
@@ -118,22 +134,27 @@ describe('RPC main recordings', () => {
         readGolden(goldens, id).recording,
         visibleState
       )
+
       assertMutationApplied()
       expect(result.verdict).toBe('killed')
     })
     const reference = referenceStates[id]
+
     if (!reference) {
       continue
     }
+
     it.skipIf(!process.env.RPC_FOUNDATION_REFERENCE_ROOT)(`${id}: rejects bcba08b3e4`, async () => {
       const { adapters } = pilotMountAdapters(process.env.RPC_FOUNDATION_REFERENCE_ROOT!, {
         reference: true
       })
+
       const result = await runRecording(
         scenario,
         adapters[scenario.operation],
         vitestRecordingScheduler()
       )
+
       expect(visibleState(result)).toEqual(reference)
       expect(reference).not.toEqual(visibleState(readGolden(goldens, id).recording))
     })

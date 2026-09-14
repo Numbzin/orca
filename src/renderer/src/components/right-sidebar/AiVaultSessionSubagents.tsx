@@ -88,8 +88,10 @@ function useSubagentSessions(session: AiVaultSession): SubagentListState {
       session.executionHostId !== LOCAL_EXECUTION_HOST_ID
     ) {
       setState({ status: 'loaded', sessions: [] })
+
       return
     }
+
     let cancelled = false
     // Why: rescans re-run this effect (modifiedAt changes); resetting to
     // loading would unmount the section until IPC returns and flicker on
@@ -112,6 +114,7 @@ function useSubagentSessions(session: AiVaultSession): SubagentListState {
           setState({ status: 'loaded', sessions: [] })
         }
       })
+
     return () => {
       cancelled = true
     }
@@ -146,6 +149,7 @@ function SubagentSessionLine({
 }): React.JSX.Element {
   const resumeState =
     resume && isIndependentlyResumableSubagent(session) ? resume.getState(session) : null
+
   const dotState = session.subagent?.status ? SUBAGENT_DOT_STATES[session.subagent.status] : null
 
   return (
@@ -189,6 +193,7 @@ function SubagentSessionLine({
           aria-label={aiVaultSessionResumeLabel(resumeState)}
           onClick={(event) => {
             event.stopPropagation()
+
             if (resumeState.worktreeId && !resumeState.blocked) {
               resume?.onResume(session, resumeState.worktreeId)
             }

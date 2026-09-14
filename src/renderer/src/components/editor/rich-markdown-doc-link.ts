@@ -17,7 +17,9 @@ import { renderRichMarkdownDocLinkHtml } from './rich-markdown-doc-link-dom'
 import { canHoldDocLink, DOC_LINK_PATTERN } from './rich-markdown-doc-link-scan'
 
 const docLinkDissolveKey = new PluginKey('docLinkDissolve')
+
 const docLinkAutoConvertKey = new PluginKey('docLinkAutoConvert')
+
 const docLinkInlinePreviewKey = new PluginKey('docLinkInlinePreview')
 
 type DocLinkStorage = {
@@ -32,12 +34,15 @@ function getDocIndex(storage: DocLinkStorage): MarkdownDocumentIndex | null {
     // after the document list empties (e.g., when switching worktrees).
     storage._cachedDocs = null
     storage._cachedIndex = null
+
     return null
   }
+
   if (storage._cachedDocs !== storage.documents) {
     storage._cachedIndex = createMarkdownDocumentIndex(storage.documents)
     storage._cachedDocs = storage.documents
   }
+
   return storage._cachedIndex
 }
 
@@ -49,28 +54,36 @@ function buildPreviewDecorations(state: EditorState, storage: DocLinkStorage): D
     if (!canHoldDocLink(node, parent)) {
       return
     }
+
     for (const match of node.text.matchAll(DOC_LINK_PATTERN)) {
       const link = isReservedRichMarkdownTransportBody(match[1])
         ? null
         : parseMarkdownDocLink(match[1])
+
       if (!link || match.index === undefined) {
         continue
       }
+
       const from = pos + match.index
       const to = from + match[0].length
+
       // Why: only decorate the match the cursor is currently editing. Other
       // `[[target]]` matches are auto-converted to atom nodes on the next
       // transaction, so decorating them here just causes a one-frame flicker.
       if (cursor <= from || cursor > to) {
         continue
       }
+
       const resolved = resolveAgainstIndex(link.target, index)
+
       const cls = resolved
         ? 'rich-markdown-doc-link-preview'
         : 'rich-markdown-doc-link-preview rich-markdown-doc-link-preview--missing'
+
       decorations.push(Decoration.inline(from, to, { class: cls }))
     }
   })
+
   return DecorationSet.create(state.doc, decorations)
 }
 
@@ -78,6 +91,7 @@ function resolveAgainstIndex(target: string, index: MarkdownDocumentIndex | null
   if (!index) {
     return false
   }
+
   return resolveMarkdownDocLink(target, index).status === 'resolved'
 }
 
@@ -129,12 +143,15 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
       start: transport.startFor('document-link'),
       tokenize(src: string) {
         const matched = transport.match(src, 'document-link')
+
         if (!matched) {
           return undefined
         }
+
         const link = isReservedRichMarkdownTransportBody(matched.value)
           ? null
           : parseMarkdownDocLink(matched.value)
+
         if (!link) {
           return undefined
         }
@@ -152,6 +169,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
       if (token.type !== 'markdownDocLink') {
         return []
       }
+
       return helpers.createNode('markdownDocLink', {
         target: typeof token.text === 'string' ? token.text : '',
         label:
@@ -170,14 +188,17 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
 
     addNodeView() {
       const storage = this.storage as DocLinkStorage
+
       return ({ node }: { node: { type: { name: string }; attrs: Record<string, unknown> } }) => {
         const target = getDocLinkTarget(node)
         const dom = document.createElement('span')
         dom.setAttribute('data-doc-link-target', target)
         const alias = getDocLinkAlias(node)
+
         if (alias) {
           dom.setAttribute('data-doc-link-label', alias)
         }
+
         dom.setAttribute('contenteditable', 'false')
         dom.textContent = getDocLinkDisplayText(node)
 
@@ -199,16 +220,20 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
             if (updatedNode.type.name !== 'markdownDocLink') {
               return false
             }
+
             const newTarget = getDocLinkTarget(updatedNode)
             const newAlias = getDocLinkAlias(updatedNode)
             dom.setAttribute('data-doc-link-target', newTarget)
+
             if (newAlias) {
               dom.setAttribute('data-doc-link-label', newAlias)
             } else {
               dom.removeAttribute('data-doc-link-label')
             }
+
             dom.textContent = getDocLinkDisplayText(updatedNode)
             applyResolutionClass(newTarget)
+
             return true
           }
         }
@@ -221,6 +246,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
     addProseMirrorPlugins() {
       const nodeType = this.type
       const storage = this.storage as DocLinkStorage
+
       return [
         // Why: when the cursor is adjacent to a doc link atom and the user presses
         // an arrow key toward it, dissolve the atom back to editable [[target]] text.
@@ -234,7 +260,9 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
               if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
                 return false
               }
+
               let direction: 'left' | 'right'
+
               if (event.key === 'ArrowLeft') {
                 direction = 'left'
               } else if (event.key === 'ArrowRight') {
@@ -242,15 +270,20 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
               } else {
                 return false
               }
+
               const { state } = view
+
               if (!(state.selection instanceof TextSelection)) {
                 return false
               }
+
               const { $from } = state.selection
               const adjacent = direction === 'left' ? $from.nodeBefore : $from.nodeAfter
+
               if (!adjacent || adjacent.type.name !== 'markdownDocLink') {
                 return false
               }
+
               const target = getDocLinkTarget(adjacent)
               const text = formatMarkdownDocLink(target, getDocLinkAlias(adjacent))
               const nodeStart = direction === 'left' ? $from.pos - adjacent.nodeSize : $from.pos
@@ -259,6 +292,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
               const cursorPos = direction === 'left' ? nodeStart + text.length - 2 : nodeStart + 2
               tr.setSelection(TextSelection.create(tr.doc, cursorPos))
               view.dispatch(tr)
+
               return true
             }
           }
@@ -280,6 +314,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
                 const link = isReservedRichMarkdownTransportBody(match[1])
                   ? null
                   : parseMarkdownDocLink(match[1])
+
                 if (!link || match.index === undefined) {
                   continue
                 }
@@ -315,9 +350,11 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
             },
             apply(tr, prev, oldState, newState) {
               const selectionMoved = !oldState.selection.eq(newState.selection)
+
               if (!tr.docChanged && !selectionMoved && !tr.getMeta('docLinksUpdated')) {
                 return prev
               }
+
               return buildPreviewDecorations(newState, storage)
             }
           },

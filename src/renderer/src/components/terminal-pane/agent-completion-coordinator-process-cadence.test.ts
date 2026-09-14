@@ -13,6 +13,7 @@ describe('agent completion coordinator', () => {
 
   it('does not schedule cadence process inspections for hidden idle panes', () => {
     const inspectProcess = vi.fn(async () => processResult(null))
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -32,6 +33,7 @@ describe('agent completion coordinator', () => {
 
   it('keeps the process-exit backstop after hidden panes gain agent evidence', async () => {
     const inspectProcess = vi.fn(async () => processResult('codex'))
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -62,6 +64,7 @@ describe('agent completion coordinator', () => {
   // pre-fix code (>25) and passes after, so it locks in the reduction.
   it('throttles a hidden agent pane to the 3s backstop cadence over a 60s window', async () => {
     const inspectProcess = vi.fn(async () => processResult('codex'))
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -84,6 +87,7 @@ describe('agent completion coordinator', () => {
 
   it('keeps a visible agent pane at full 750ms cadence over a 60s window', async () => {
     const inspectProcess = vi.fn(async () => processResult('codex'))
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -105,6 +109,7 @@ describe('agent completion coordinator', () => {
   it('re-arms full cadence immediately when a throttled hidden pane becomes visible', async () => {
     let visible = false
     const inspectProcess = vi.fn(async () => processResult('codex'))
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -138,6 +143,7 @@ describe('agent completion coordinator', () => {
   it('still detects an unannounced process exit while hidden, at the slower cadence', async () => {
     let foregroundProcess: string | null = 'codex'
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -171,6 +177,7 @@ describe('agent completion coordinator', () => {
   it('clears process evidence after agent exit so later non-agent spinner titles do not notify', async () => {
     let foregroundProcess: string | null = 'codex'
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -204,6 +211,7 @@ describe('agent completion coordinator', () => {
   it('does not dispatch process-exit while an agent terminal still has child processes', async () => {
     let result = processResult('codex')
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -242,6 +250,7 @@ describe('agent completion coordinator', () => {
 
   it('keeps hook working evidence across unavailable inspections', async () => {
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -268,6 +277,7 @@ describe('agent completion coordinator', () => {
 
   it('keeps explicit-title evidence across unavailable inspections', async () => {
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -293,6 +303,7 @@ describe('agent completion coordinator', () => {
   it('resets exit confirmation across an unavailable inspection', async () => {
     let result: RuntimeTerminalProcessInspection = processResult('codex')
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -324,6 +335,7 @@ describe('agent completion coordinator', () => {
   it('does not mark an agent-to-agent process replacement as terminal idle', async () => {
     let foregroundProcess = 'codex'
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -349,6 +361,7 @@ describe('agent completion coordinator', () => {
   it('suppresses replacement completion before coordinator state mutation', async () => {
     let foregroundProcess = 'codex'
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -376,6 +389,7 @@ describe('agent completion coordinator', () => {
     let foregroundProcess: string | null = 'codex'
     const dispatchCompletion = vi.fn()
     const shouldSuppressConfirmedProcessExitCompletion = vi.fn(() => true)
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
@@ -403,6 +417,7 @@ describe('agent completion coordinator', () => {
   it('suppresses process-exit backstop after a title completion already notified the turn', async () => {
     let foregroundProcess: string | null = 'codex'
     const dispatchCompletion = vi.fn()
+
     const coordinator = createAgentCompletionCoordinator({
       paneKey: 'tab-1:leaf-1',
       getPtyId: () => 'pty-1',
