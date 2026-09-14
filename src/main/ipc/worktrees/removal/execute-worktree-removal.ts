@@ -86,6 +86,10 @@ export async function executeWorktreeRemoval(
     throw new Error(formatWorktreeRemovalError(error, canonicalWorktreePath, args.force ?? false))
   }
 
+  // Ahead of the archive-hook gate below, and that ordering is right: both arms describe a
+  // registration with no checkout behind it — a row whose path IS a `.git` file, or a tree already
+  // gone from disk. There is nothing to archive, and running the hook would fail on the missing
+  // cwd and block a cleanup that has no user data to lose.
   if (
     !repo.connectionId &&
     ((await isPrunableGitFileWorktree(registeredWorktree, localWorktreeGitOptions)) ||

@@ -7,25 +7,18 @@ const IPC_HANDLER_PREFIX = /Error occurred in handler for '[^']*':\s*(?:Error:\s
 const ERROR_CLASS_PREFIX = /^(?:[A-Za-z_$][\w$]*)?Error:\s*/
 
 function unwrapIpcErrorMessage(message: string): string | undefined {
+  const wrapped = IPC_INVOKE_PREFIX.test(message) || IPC_HANDLER_PREFIX.test(message)
   const detail = message.replace(IPC_INVOKE_PREFIX, '').replace(IPC_HANDLER_PREFIX, '').trim()
-  return detail || undefined
+  // Only strip the class name off something we actually unwrapped, so a renderer-local
+  // `TypeError: …` keeps the prefix that tells you what it was.
+  return (wrapped ? detail.replace(ERROR_CLASS_PREFIX, '').trim() : detail) || undefined
 }
 
 export function compactIpcErrorMessage(message: string): string | undefined {
   return unwrapIpcErrorMessage(message)?.split('\n')[0]?.trim() || undefined
 }
 export function readIpcErrorDetail(error: unknown): string | undefined {
-  if (!(error instanceof Error)) {
-    return undefined
-  }
-  const detail = unwrapIpcErrorMessage(error.message)
-  if (!detail) {
-    return undefined
-  }
-  // Only strip the class name off something we actually unwrapped, so a renderer-local
-  // `TypeError: …` keeps the prefix that tells you what it was.
-  const wrapped = IPC_INVOKE_PREFIX.test(error.message) || IPC_HANDLER_PREFIX.test(error.message)
-  return wrapped ? detail.replace(ERROR_CLASS_PREFIX, '').trim() || undefined : detail
+  return error instanceof Error ? unwrapIpcErrorMessage(error.message) : undefined
 }
 
 export function readIpcErrorMessage(error: unknown): string | undefined {
