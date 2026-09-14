@@ -25,6 +25,12 @@ import {
   selectActiveToolCall
 } from '../../../../shared/native-chat-tool-activity'
 import { nativeChatToolRunIconName } from '../../../../shared/native-chat-tool-icon'
+import {
+  hasNativeChatAskCall,
+  isNativeChatAskCall,
+  nativeChatAskRunSubject
+} from '../../../../shared/native-chat-ask-row'
+import { NativeChatAwaitingInputRow } from './NativeChatAwaitingInputRow'
 import { NativeChatTaskList } from './NativeChatTaskList'
 import { buildNativeChatTaskListRows } from './native-chat-task-list-history'
 import { NativeChatSubagentRun } from './NativeChatSubagentRun'
@@ -88,11 +94,20 @@ export function NativeChatToolRun({
   const subagentRows = subagentGroups
     .filter(isRenderableSubagentGroup)
     .map((group) => <NativeChatSubagentRun key={group.groupId} block={group} />)
-  const callCount = countToolCalls(blocks) || blocks.length
+  // A question tool call is not work to summarize — the agent is blocked on the
+  // reader — so its calls leave the header for one awaiting row and the header
+  // is left describing only what actually ran. Everything below reads
+  // `headerBlocks`, so a run that is nothing but the ask draws no header at all
+  // rather than a `1×` counting a call the reader is being asked to answer.
+  const hasAskCall = structuredActivityUi && hasNativeChatAskCall(blocks)
+  const askSubject = hasAskCall ? nativeChatAskRunSubject(blocks) : null
+  const headerBlocks = hasAskCall ? blocks.filter((block) => !isNativeChatAskCall(block)) : blocks
+  const showsHeader = !hasAskCall || countToolCalls(headerBlocks) > 0
+  const callCount = countToolCalls(headerBlocks) || headerBlocks.length
   // Members stay separate all the way to the markup: joining them into one
   // string is what made a run read as a single call, because the separator also
   // occurs inside tool names like `browser.open` and `tools/read`.
-  const summaryMembers = toolRunSummaryMembers(blocks)
+  const summaryMembers = toolRunSummaryMembers(headerBlocks)
   const hiddenCallCount = Math.max(0, callCount - summaryMembers.length)
   // Same content-signature keying the member rows below use: two identical calls
   // in one run are distinguished by occurrence, never by list position.
@@ -109,7 +124,14 @@ export function NativeChatToolRun({
     ? selectActiveToolCall(blocks, { activeTurnIsWorking })
     : null
   const isSettled = latestActiveCall == null
-  const hasRunningCall = blocks.some((block) => isToolCallBlock(block) && block.state === 'running')
+  // The ask owns the active slot when it is the live call: its own row already
+  // says the turn is waiting, and a second "Running request_user_input" beside
+  // it would report the block twice in two different vocabularies.
+  const askIsActive = latestActiveCall !== null && isNativeChatAskCall(latestActiveCall)
+  const headerActiveCall = askIsActive ? null : latestActiveCall
+  const hasRunningCall = headerBlocks.some(
+    (block) => isToolCallBlock(block) && block.state === 'running'
+  )
   // The turn caret opens the activity group while each child tool stays collapsed.
   const expandToolLines = expandOverride === undefined ? open : false
   // Diffing every edit is the run's most expensive work, so a collapsed run —
@@ -135,7 +157,7 @@ export function NativeChatToolRun({
   // spans categories therefore heads with the generic tool glyph. The glyph is
   // fixed once settled, so state rides on the trailing mark — a leading glyph
   // that flipped to a check would read as a change of identity.
-  const settledHeaderIcon = nativeChatToolRunIconName(blocks.filter(isToolCallBlock))
+  const settledHeaderIcon = nativeChatToolRunIconName(headerBlocks.filter(isToolCallBlock))
   const fallbackLabel =
     callCount === 1
       ? translate('components.native-chat.tool.countOne', NATIVE_CHAT_TOOL_ACTIVITY_COPY.countOne)
@@ -177,7 +199,10 @@ export function NativeChatToolRun({
     // so the turn's activity doesn't crowd the message text.
     <div className="mt-3">
       {subagentRows}
-      {latestActiveCall ? (
+      {hasAskCall ? (
+        <NativeChatAwaitingInputRow subject={askSubject} pending={askIsActive} />
+      ) : null}
+      {!showsHeader ? null : headerActiveCall ? (
         <button
           type="button"
           onClick={() => setOpen(!open)}
@@ -186,12 +211,12 @@ export function NativeChatToolRun({
           aria-live="polite"
         >
           <NativeChatToolIcon
-            mcpIdentity={latestActiveCall.mcpIdentity}
-            rowWord={latestActiveCall.name}
+            mcpIdentity={headerActiveCall.mcpIdentity}
+            rowWord={headerActiveCall.name}
             className="text-muted-foreground"
           />
           <span className="min-w-0 animate-pulse truncate text-foreground/85 motion-reduce:animate-none">
-            {nativeChatToolActivityLabel(latestActiveCall)}
+            {nativeChatToolActivityLabel(headerActiveCall)}
           </span>
           {open ? <ChevronRight className="size-3.5 rotate-90 text-muted-foreground" /> : null}
         </button>
@@ -267,14 +292,14 @@ export function NativeChatToolRun({
           />
         </button>
       )}
-      {open ? (
+      {open && showsHeader ? (
         // Members are indented under the header because nothing else marks the
         // run's extent — flush rows are indistinguishable from the blocks after
         // them, so the batch has no visible end.
         <div className="mt-1 pl-4">
           {(() => {
             const seen = new Map<string, number>()
-            return blocks.map((block, blockIndex) => {
+            return headerBlocks.map((block, blockIndex) => {
               const taskList = taskLists?.rows.get(block)
               if (taskList) {
                 return <NativeChatTaskList key={`tasks:${blockIndex}`} {...taskList} />

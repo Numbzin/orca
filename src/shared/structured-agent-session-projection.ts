@@ -4,6 +4,7 @@ import {
   normalizePromptField
 } from './agent-status-field-normalization'
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
+import { isAskUserQuestionTool } from './agent-question-answered-intent'
 import {
   AGENT_STATUS_TOOL_INPUT_MAX_LENGTH,
   AGENT_STATUS_TOOL_NAME_MAX_LENGTH
@@ -43,6 +44,17 @@ export function stripBoundedTextMarker(text: string): { text: string; truncated:
   return { text: stripped, truncated: stripped.length !== text.length }
 }
 
+/** What a pending question asks. Claude groups several under one item and names
+ *  that item by their count, so its own list wins over that summary label. */
+function pendingQuestionTexts(body: {
+  question: string
+  questions?: readonly { question: string }[]
+}): { question: string }[] {
+  return body.questions && body.questions.length > 0
+    ? body.questions.map((question) => ({ question: question.question }))
+    : [{ question: body.question }]
+}
+
 function itemBlocks(item: AgentJournalRenderItem): {
   role: NativeChatMessage['role']
   blocks: NativeChatBlock[]
@@ -52,6 +64,12 @@ function itemBlocks(item: AgentJournalRenderItem): {
     return { role: body.role, blocks: body.blocks }
   }
   if (body.kind === 'tool-call') {
+    // The question item below draws this call's row. Claude journals both the
+    // `AskUserQuestion` call and the question it raised, so keeping this one too
+    // would print the awaiting row twice — once per lane that saw the same ask.
+    if (isAskUserQuestionTool(body.name)) {
+      return null
+    }
     return {
       role: 'assistant',
       blocks: [
@@ -105,7 +123,21 @@ function itemBlocks(item: AgentJournalRenderItem): {
   }
   if (body.kind === 'question') {
     if (body.resolution.state === 'pending') {
-      return null
+      // A pending question is work the reader has to act on, so it takes a row
+      // instead of living only in the docked card. Shaped as the question tool
+      // call it came from, so the one awaiting-input row serves both this and
+      // the lanes that journal that call directly.
+      return {
+        role: 'assistant',
+        blocks: [
+          {
+            type: 'tool-call',
+            name: 'request_user_input',
+            input: { questions: pendingQuestionTexts(body) },
+            state: 'running'
+          }
+        ]
+      }
     }
     const choices = body.options.map((option) => option.label).join(' · ')
     return {
