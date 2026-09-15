@@ -52,11 +52,11 @@ export function readBrowserClientPageGuestMetadataIfLive(
  * caller here is a cleanup path (registry eviction, pane disconnect) invoked from a React effect or
  * event handler, where the same unhandled throw unwinds the workbench error boundary.
  */
-export function removeBrowserClientPageWebview(webview: Electron.WebviewTag): void {
+export function removeBrowserClientPageWebview(webview: Pick<Electron.WebviewTag, 'remove'>): void {
   try {
     webview.remove()
   } catch (error) {
-    console.warn('[browser-client-page] webview removal failed, guest already gone:', error)
+    console.warn('[browser-client-page] webview removal threw, continuing teardown:', error)
     recordRendererCrashBreadcrumb('browser_client_page_webview_removal_failed', {
       errorName: error instanceof Error ? error.name : typeof error,
       errorMessage: error instanceof Error ? error.message : String(error)

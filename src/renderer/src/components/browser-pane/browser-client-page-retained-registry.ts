@@ -154,7 +154,6 @@ export class BrowserClientPageRetainedRegistry {
       if (page.status === 'attaching') {
         page.rejectMount(new Error('browser_client_page_renderer_registry_disposed'))
       }
-      page.host.remove()
       this.releasePage(page)
     }
     this.root?.remove()

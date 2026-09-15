@@ -13,17 +13,17 @@ function invalidGuestInstanceId(): Error {
   return new Error('Invalid guestInstanceId: 7')
 }
 
-function deadGuestWebview(): Electron.WebviewTag {
+function deadGuestWebview(): Pick<Electron.WebviewTag, 'remove'> {
   return {
     remove: vi.fn(() => {
       throw invalidGuestInstanceId()
     })
-  } as unknown as Electron.WebviewTag
+  }
 }
 
 describe('removeBrowserClientPageWebview', () => {
   it('removes a live webview without recording a breadcrumb', () => {
-    const webview = { remove: vi.fn() } as unknown as Electron.WebviewTag
+    const webview: Pick<Electron.WebviewTag, 'remove'> = { remove: vi.fn() }
 
     removeBrowserClientPageWebview(webview)
 
