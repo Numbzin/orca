@@ -74,10 +74,17 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
         // marked unavailable forever. Retry once the window drains instead of waiting for it.
         if (error instanceof DaemonCrashLoopError && !this.respawnAdoptionClosed) {
           const retryDelayMs = Math.max(error.retryAfterMs, MIN_CRASH_LOOP_RETRY_DELAY_MS)
-          setTimeout(() => {
+          const retryTimer = setTimeout(() => {
+            // Why: only the panes still in this set are actually waiting; if they've all
+            // since exited, retrying would fork the daemon for nothing on every drained
+            // window, working against the throttle's own containment.
+            if (this.sessionsAwaitingDaemonRecovery.size === 0) {
+              return
+            }
             this.writeRecoveryAttempted = false
             this.reconnectAfterWriteFailure()
           }, retryDelayMs)
+          retryTimer.unref()
         }
       })
       .finally(() => {

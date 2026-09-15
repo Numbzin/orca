@@ -8,15 +8,14 @@ vi.mock('@/lib/crash-breadcrumb-recorder', () => ({
 
 import { removeBrowserClientPageWebview } from './browser-client-page-guest-metadata'
 
-/** Verbatim from Electron 43.4.1: main destroyed the guest, the tag still holds its id. */
-function invalidGuestInstanceId(): Error {
-  return new Error('Invalid guestInstanceId: 7')
-}
-
-function deadGuestWebview(): Pick<Electron.WebviewTag, 'remove'> {
+// Why a synthetic throw rather than a real dead guest: this pins the helper's own try/catch
+// contract (any synchronous throw out of `.remove()` is swallowed and breadcrumbed), not that
+// Electron's `Invalid guestInstanceId` actually reaches this call site — see the module doc's
+// note that Blink may report that specific exception globally instead of rethrowing it here.
+function throwingWebview(error: Error): Pick<Electron.WebviewTag, 'remove'> {
   return {
     remove: vi.fn(() => {
-      throw invalidGuestInstanceId()
+      throw error
     })
   }
 }
@@ -31,8 +30,8 @@ describe('removeBrowserClientPageWebview', () => {
     expect(mocks.recordBreadcrumb).not.toHaveBeenCalled()
   })
 
-  it('swallows Invalid guestInstanceId thrown by a dead guest instead of propagating it', () => {
-    const webview = deadGuestWebview()
+  it('swallows a synchronous throw from .remove() instead of propagating it', () => {
+    const webview = throwingWebview(new Error('Invalid guestInstanceId: 7'))
 
     expect(() => removeBrowserClientPageWebview(webview)).not.toThrow()
     expect(mocks.recordBreadcrumb).toHaveBeenCalledWith(

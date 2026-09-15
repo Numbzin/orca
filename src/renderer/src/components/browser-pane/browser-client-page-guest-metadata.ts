@@ -44,13 +44,14 @@ export function readBrowserClientPageGuestMetadataIfLive(
 }
 
 /**
- * Detaches a `<webview>`, tolerating a dead guest.
+ * Detaches a `<webview>` without letting a removal failure escape.
  *
- * Why: removing the tag from the DOM runs Electron's own `disconnectedCallback`, which reaches
- * into the guest to tear it down. If the guest already died in main (see the module doc above),
- * that internal call throws `Invalid guestInstanceId` synchronously out of `.remove()` — and every
- * caller here is a cleanup path (registry eviction, pane disconnect) invoked from a React effect or
- * event handler, where the same unhandled throw unwinds the workbench error boundary.
+ * Why total: removing the tag runs Electron's `disconnectedCallback`, which reaches into the
+ * guest to tear it down — unverified whether a dead guest (see the module doc above) makes that
+ * throw synchronously out of `.remove()` here, since Blink reports custom-element callback
+ * exceptions globally rather than rethrowing them to the caller. Kept defensive regardless: every
+ * caller is a cleanup path (registry eviction, pane disconnect) invoked from a React effect or
+ * event handler, where any throw that does reach here would unwind the workbench error boundary.
  */
 export function removeBrowserClientPageWebview(webview: Pick<Electron.WebviewTag, 'remove'>): void {
   try {
