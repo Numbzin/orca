@@ -146,7 +146,7 @@ function parseStructuredPayload(value: string): HtmlSuperscriptLinkSource | null
   } catch {
     return null
   }
-  if (!isCitationShape(candidate)) {
+  if (!isCitationSource(candidate)) {
     return null
   }
   const parsed = parseHtmlSuperscriptLinkSource(candidate.source)
@@ -194,7 +194,7 @@ function hasOnlyAttributes(element: Element, allowed: string[]): boolean {
   return Array.from(element.attributes).every((attribute) => allowedSet.has(attribute.name))
 }
 
-function isCitationShape(value: unknown): value is HtmlSuperscriptLinkSource {
+function isCitationSource(value: unknown): value is HtmlSuperscriptLinkSource {
   if (!value || typeof value !== 'object') {
     return false
   }
