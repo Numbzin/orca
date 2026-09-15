@@ -1,7 +1,12 @@
 /**
  * Cold-park verdict telemetry and a safe-side circuit breaker.
  * Field breadcrumbs prove render-cadence flips, but not which eligibility input
- * oscillates; burst damping keeps the pane mounted before React reaches #185.
+ * oscillates; damping keeps the pane mounted rather than let it cycle.
+ *
+ * Two horizons, because churn harms in two ways: a burst reaches React's commit
+ * bail (#185), while churn merely sustained remounts the pane — and a remount
+ * re-establishes a remote/SSH terminal, which users report as the connection
+ * dropping and reconnecting in a loop. Both engage the same unpark pin.
  *
  * Scope: flips are counted on the rendered verdict and the pin subtracts from
  * that same verdict (selectParkVerdictPinnedTabIds), so churn driven by any
@@ -14,8 +19,14 @@ import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
 import { REACT_NESTED_UPDATE_LIMIT } from '../../../../shared/react-update-depth-attribution'
 
 export const TERMINAL_TAB_PARK_FLIP_WINDOW_MS = 60_000
-/** Flips per window that no sane park policy should reach. Breadcrumb only. */
+/** Flips per window that no sane park policy should reach. */
 export const TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT = 12
+/**
+ * Ceiling for the sustained-churn pin. Each consecutive notice-limit window
+ * doubles the pin, so a verdict that cannot settle stops being re-proposed
+ * every ~35s; a tab that goes quiet for one full window starts over at 1x.
+ */
+export const TERMINAL_TAB_PARK_FLIP_SUSTAINED_PIN_MAX_MS = 8 * TERMINAL_TAB_PARK_FLIP_WINDOW_MS
 
 /** Measured upper bound after the passive-effect pin engages. */
 const PARK_PIN_SETTLE_COMMITS = 6
@@ -38,8 +49,10 @@ export type ParkVerdictFlipRecord = {
   notified: boolean
   burstStartMs: number
   burstFlips: number
-  /** Set when a flip burst engaged damping; the verdict stays unparked until then. */
+  /** Set when flip churn engaged damping; the verdict stays unparked until then. */
   pinnedUntilMs?: number | null
+  /** Consecutive notice-limit windows; backs the pin off for churn that persists. */
+  sustainedPinCount?: number
 }
 
 // Why it leaves pinnedUntilMs alone: the notice window is 60s from the first
@@ -87,6 +100,7 @@ export function recordParkVerdictFlips(args: {
   noticeLimit?: number
   burstWindowMs?: number
   burstLimit?: number
+  sustainedPinMaxMs?: number
 }): void {
   const {
     records,
@@ -96,7 +110,8 @@ export function recordParkVerdictFlips(args: {
     flipWindowMs = TERMINAL_TAB_PARK_FLIP_WINDOW_MS,
     noticeLimit = TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT,
     burstWindowMs = TERMINAL_TAB_PARK_FLIP_BURST_WINDOW_MS,
-    burstLimit = TERMINAL_TAB_PARK_FLIP_BURST_LIMIT
+    burstLimit = TERMINAL_TAB_PARK_FLIP_BURST_LIMIT,
+    sustainedPinMaxMs = TERMINAL_TAB_PARK_FLIP_SUSTAINED_PIN_MAX_MS
   } = args
 
   for (const tabId of Array.from(records.keys())) {
@@ -122,6 +137,16 @@ export function recordParkVerdictFlips(args: {
       continue
     }
     if (parked === record.parked) {
+      // Why the back-off clears here and not only on a flip: churn stopping
+      // looks like no flips at all, so a flip-gated reset would ratchet — a tab
+      // that churned once at launch would still carry a ceiling pin hours on.
+      if (
+        record.sustainedPinCount &&
+        !isParkVerdictPinLive(record, nowMs) &&
+        nowMs - record.windowStartMs >= flipWindowMs
+      ) {
+        record.sustainedPinCount = 0
+      }
       continue
     }
 
@@ -129,6 +154,12 @@ export function recordParkVerdictFlips(args: {
     // elapsed value as a fresh window rather than trusting the delta.
     const elapsedMs = nowMs - record.windowStartMs
     if (elapsedMs >= flipWindowMs || elapsedMs < 0) {
+      // Why here and not in resetFlipWindows: a window that closed below the
+      // notice limit is the only proof the churn actually stopped. The reset on
+      // pin lapse must NOT clear the count, or the back-off can never grow.
+      if (record.flips < noticeLimit) {
+        record.sustainedPinCount = 0
+      }
       resetFlipWindows(record, nowMs)
     }
     const burstElapsedMs = nowMs - record.burstStartMs
@@ -158,6 +189,14 @@ export function recordParkVerdictFlips(args: {
     // exists to keep down.
     if (!isParkVerdictPinLive(record, nowMs) && !record.notified && record.flips >= noticeLimit) {
       record.notified = true
+      // Why this pins too: the burst window only catches churn fast enough to
+      // reach React's commit bail. Churn one flip every ~3s never bursts, so it
+      // used to run unbounded — 47min of remount/reconnect in one field bundle.
+      // Each remount is user-visible, so the notice limit damps on its own.
+      const sustainedPinCount = (record.sustainedPinCount ?? 0) + 1
+      record.sustainedPinCount = sustainedPinCount
+      const pinnedForMs = Math.min(flipWindowMs * 2 ** (sustainedPinCount - 1), sustainedPinMaxMs)
+      record.pinnedUntilMs = nowMs + pinnedForMs
       // Why: flips is always exactly noticeLimit here, so elapsedMs is the only
       // field that separates slow churn from a burst the damping already caught.
       recordRendererCrashBreadcrumb('terminal_park_verdict_churn', {
@@ -165,7 +204,9 @@ export function recordParkVerdictFlips(args: {
         trigger: 'window',
         flips: record.flips,
         elapsedMs: nowMs - record.windowStartMs,
-        windowMs: flipWindowMs
+        windowMs: flipWindowMs,
+        pinnedForMs,
+        sustainedPinCount
       })
     }
   }

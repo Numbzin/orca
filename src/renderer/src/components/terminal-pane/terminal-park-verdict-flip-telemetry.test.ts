@@ -4,6 +4,7 @@ import {
   TERMINAL_TAB_PARK_FLIP_BURST_WINDOW_MS,
   TERMINAL_TAB_PARK_FLIP_COMMIT_COST,
   TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT,
+  TERMINAL_TAB_PARK_FLIP_SUSTAINED_PIN_MAX_MS,
   TERMINAL_TAB_PARK_FLIP_WINDOW_MS,
   getParkVerdictUnparkPinUntilMs,
   recordParkVerdictFlips,
@@ -112,15 +113,109 @@ describe('recordParkVerdictFlips', () => {
     )
   })
 
-  // Why: slow churn must not be damped — parking it out for a minute would cost
-  // a mounted pane's memory for a verdict that was never near React's bail.
-  it('does not pin churn spread past the burst window', () => {
+  // Why this replaced "does not pin churn spread past the burst window": that
+  // rule read the pin as purely a React #185 guard, so slow churn was left to
+  // run rather than spend a mounted pane's memory on it. The field disagreed —
+  // slow churn remounts the pane every ~3s for as long as it lasts, and a
+  // remount re-establishes a remote terminal. Memory is the cheaper side.
+  it('pins churn that is too slow to burst but reaches the notice limit', () => {
     const records = new Map<string, ParkVerdictFlipRecord>()
     for (let i = 0; i < TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT + 1; i += 1) {
       observe({ records, parked: i % 2 === 0, nowMs: 1_000 + i * SLOW_CHURN_STEP_MS })
     }
 
-    expect(records.get(TAB)?.pinnedUntilMs ?? null).toBeNull()
+    const noticeMs = 1_000 + TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT * SLOW_CHURN_STEP_MS
+    expect(records.get(TAB)?.pinnedUntilMs).toBe(noticeMs + TERMINAL_TAB_PARK_FLIP_WINDOW_MS)
+    expect(recordBreadcrumb).toHaveBeenCalledWith(
+      'terminal_park_verdict_churn',
+      expect.objectContaining({
+        trigger: 'window',
+        pinnedForMs: TERMINAL_TAB_PARK_FLIP_WINDOW_MS,
+        sustainedPinCount: 1
+      })
+    )
+  })
+
+  // Why this cadence and not a round number: it is the field's. Bundle
+  // Nz4kzIG_NwLd8KObgjJDKA (v1.4.201, win32) carries 51 'window' churn crumbs,
+  // flips exactly 12 at a median elapsedMs of ~35s => one flip every ~2.9s, one
+  // tab churning without pause from 02:03 to 02:50. Across 308 field bundles
+  // that install is the ONLY one whose churn is slow enough to evade the burst
+  // window; the other 22 churning installs all burst, and all got damped.
+  describe('sustained field-cadence churn', () => {
+    const FIELD_FLIP_INTERVAL_MS = 2_930
+    const FIELD_CHURN_FLIPS = 960
+
+    function runFieldChurn(): { pinnedPasses: number; crumbs: number } {
+      const records = new Map<string, ParkVerdictFlipRecord>()
+      let pinnedPasses = 0
+      for (let i = 0; i < FIELD_CHURN_FLIPS; i += 1) {
+        const nowMs = 1_000 + i * FIELD_FLIP_INTERVAL_MS
+        observe({ records, parked: i % 2 === 0, nowMs })
+        const { pinnedTabIds } = selectParkVerdictPinnedTabIds({
+          records,
+          tabIds: [TAB],
+          nowMs
+        })
+        if (pinnedTabIds.size > 0) {
+          pinnedPasses += 1
+        }
+      }
+      return {
+        pinnedPasses,
+        crumbs: recordBreadcrumb.mock.calls.filter(
+          (call) => call[0] === 'terminal_park_verdict_churn'
+        ).length
+      }
+    }
+
+    it('damps the churn instead of letting it run for the whole session', () => {
+      const { pinnedPasses, crumbs } = runFieldChurn()
+
+      // Before this fix both numbers were 0 pinned passes and 46 crumbs over
+      // the same 47 simulated minutes — damping never engaged even once.
+      expect(pinnedPasses).toBeGreaterThan(FIELD_CHURN_FLIPS / 2)
+      expect(crumbs).toBeLessThan(10)
+    })
+
+    it('backs the pin off to the ceiling while the churn persists', () => {
+      const records = new Map<string, ParkVerdictFlipRecord>()
+      for (let i = 0; i < FIELD_CHURN_FLIPS; i += 1) {
+        observe({ records, parked: i % 2 === 0, nowMs: 1_000 + i * FIELD_FLIP_INTERVAL_MS })
+      }
+
+      const pinnedForMs = recordBreadcrumb.mock.calls
+        .filter((call) => call[0] === 'terminal_park_verdict_churn')
+        .map((call) => (call[1] as { pinnedForMs: number }).pinnedForMs)
+      expect(pinnedForMs[0]).toBe(TERMINAL_TAB_PARK_FLIP_WINDOW_MS)
+      expect(pinnedForMs.at(-1)).toBe(TERMINAL_TAB_PARK_FLIP_SUSTAINED_PIN_MAX_MS)
+    })
+
+    // Why: without this the back-off is a ratchet — a tab that churned once at
+    // launch would still be carrying an 8-minute pin hours later.
+    it('starts over at one window after a quiet window', () => {
+      const records = new Map<string, ParkVerdictFlipRecord>()
+      for (let i = 0; i < TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT + 1; i += 1) {
+        observe({ records, parked: i % 2 === 0, nowMs: 1_000 + i * SLOW_CHURN_STEP_MS })
+      }
+      expect(records.get(TAB)?.sustainedPinCount).toBe(1)
+
+      const quietMs = 1_000 + TERMINAL_TAB_PARK_FLIP_SUSTAINED_PIN_MAX_MS * 4
+      observe({ records, parked: true, nowMs: quietMs })
+      expect(records.get(TAB)?.sustainedPinCount).toBe(0)
+
+      recordBreadcrumb.mockClear()
+      for (let i = 1; i <= TERMINAL_TAB_PARK_FLIP_NOTICE_LIMIT; i += 1) {
+        observe({ records, parked: i % 2 === 0, nowMs: quietMs + i * SLOW_CHURN_STEP_MS })
+      }
+      expect(recordBreadcrumb).toHaveBeenCalledWith(
+        'terminal_park_verdict_churn',
+        expect.objectContaining({
+          pinnedForMs: TERMINAL_TAB_PARK_FLIP_WINDOW_MS,
+          sustainedPinCount: 1
+        })
+      )
+    })
   })
 
   it('re-arms after the window elapses', () => {
