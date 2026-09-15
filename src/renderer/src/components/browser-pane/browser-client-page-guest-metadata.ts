@@ -43,6 +43,27 @@ export function readBrowserClientPageGuestMetadataIfLive(
   }
 }
 
+/**
+ * Detaches a `<webview>`, tolerating a dead guest.
+ *
+ * Why: removing the tag from the DOM runs Electron's own `disconnectedCallback`, which reaches
+ * into the guest to tear it down. If the guest already died in main (see the module doc above),
+ * that internal call throws `Invalid guestInstanceId` synchronously out of `.remove()` — and every
+ * caller here is a cleanup path (registry eviction, pane disconnect) invoked from a React effect or
+ * event handler, where the same unhandled throw unwinds the workbench error boundary.
+ */
+export function removeBrowserClientPageWebview(webview: Electron.WebviewTag): void {
+  try {
+    webview.remove()
+  } catch (error) {
+    console.warn('[browser-client-page] webview removal failed, guest already gone:', error)
+    recordRendererCrashBreadcrumb('browser_client_page_webview_removal_failed', {
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
 export function createBrowserClientPageLoadFailureHandler(
   webview: Electron.WebviewTag,
   onUnavailable: () => void,
