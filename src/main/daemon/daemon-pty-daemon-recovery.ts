@@ -3,10 +3,15 @@ import { getMacDaemonSystemResolverHealth } from './daemon-health'
 import { getMacDaemonTccAttributionHealth } from './daemon-tcc-attribution'
 import { isDaemonStaleForCurrentBundle } from './daemon-bundle-staleness'
 import { isDaemonGoneError } from './daemon-endpoint-errors'
+import { DaemonCrashLoopError } from './daemon-respawn-throttle'
 import { DaemonPtyCheckpointPersistence } from './daemon-pty-checkpoint-persistence'
 import type { DaemonRespawnReason } from './daemon-pty-runtime-state'
 import type { ListSessionsResult } from './types'
 import type { PtyBackgroundStreamEvent } from '../providers/types'
+
+// Why: a zero/near-zero retryAfterMs (window already drained) must still yield to the event loop
+// rather than recurse synchronously.
+const MIN_CRASH_LOOP_RETRY_DELAY_MS = 1_000
 
 export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersistence {
   // Why: the token read no longer throws, so audit its absence directly after an authenticated drop.
@@ -61,7 +66,20 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
     // left frozen with silently dropped input until each is typed into.
     this.notifyActiveSessionsWriteUnavailable()
     const recovery = this.withDaemonRetry(() => this.ensureConnected())
-      .catch((error) => console.warn('[daemon] Failed to recover after rejected PTY input:', error))
+      .catch((error) => {
+        console.warn('[daemon] Failed to recover after rejected PTY input:', error)
+        // Why: the throttle's own doc promises a repaired host recovers "on its own" once its
+        // sliding window drains, but nothing was driving that — writeRecoveryAttempted only ever
+        // cleared on success, so a client that stopped typing during the crash loop stayed
+        // marked unavailable forever. Retry once the window drains instead of waiting for it.
+        if (error instanceof DaemonCrashLoopError && !this.respawnAdoptionClosed) {
+          const retryDelayMs = Math.max(error.retryAfterMs, MIN_CRASH_LOOP_RETRY_DELAY_MS)
+          setTimeout(() => {
+            this.writeRecoveryAttempted = false
+            this.reconnectAfterWriteFailure()
+          }, retryDelayMs)
+        }
+      })
       .finally(() => {
         this.releasePendingRespawnAdoptionLease()
         if (this.writeRecoveryPromise === recovery) {

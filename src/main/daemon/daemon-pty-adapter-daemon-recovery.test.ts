@@ -4,6 +4,7 @@ import { existsSync, rmSync } from 'node:fs'
 import { DaemonClient } from './client'
 import { DaemonProtocolError } from './daemon-errors'
 import { DaemonPtyAdapter } from './daemon-pty-adapter'
+import { DaemonCrashLoopError } from './daemon-respawn-throttle'
 import { DaemonServer } from './daemon-server'
 import type { DaemonFileLog } from './daemon-file-log'
 import { PtyWriteUnavailableError } from '../providers/pty-write-unavailable-error'
@@ -225,6 +226,44 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         }
 
         expect(respawn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+        healingAdapter.dispose()
+      }
+    })
+
+    it('retries write recovery on its own once a crash-loop refusal drains, without another keystroke', async () => {
+      const respawn = vi.fn(async () => {
+        if (respawn.mock.calls.length === 1) {
+          throw new DaemonCrashLoopError({
+            allowed: false,
+            reason: 'crash_loop',
+            attemptsInWindow: 5,
+            retryAfterMs: 20
+          })
+        }
+        restartServerOnRespawn()
+        await server.start()
+      })
+      const healingAdapter = new DaemonPtyAdapter({ socketPath, tokenPath, respawn })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { id } = await healingAdapter.spawn({ cols: 80, rows: 24 })
+        const client = (healingAdapter as unknown as { client: DaemonClient }).client
+        await server.shutdown()
+        await waitFor(() => !client.isConnected())
+
+        expect(() => healingAdapter.write(id, 'a')).toThrow(PtyWriteUnavailableError)
+        await waitFor(() => respawn.mock.calls.length === 1)
+
+        // Why no second write here: the throttle's own contract is that a repaired host
+        // recovers "on its own" once the window drains — this asserts that promise holds
+        // without anything typing into the pane again.
+        await waitFor(() => respawn.mock.calls.length === 2)
+
+        await expect(
+          healingAdapter.spawn({ sessionId: id, cols: 80, rows: 24 })
+        ).resolves.toMatchObject({ id })
       } finally {
         warn.mockRestore()
         healingAdapter.dispose()
