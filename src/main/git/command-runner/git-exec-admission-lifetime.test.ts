@@ -49,6 +49,7 @@ vi.mock('../../../shared/git-fetch-head-lock', async (importOriginal) => {
 import { gitExecFileAsync, gitExecFileAsyncBuffer } from './git-exec-file'
 import { execFileCapture } from './exec-file-capture'
 import {
+  acquireGitAdmission,
   GitAdmissionScheduler,
   _gitAdmissionSnapshotForTests,
   _resetGitAdmissionForTests
@@ -85,6 +86,33 @@ describe('git exec admission lifetime', () => {
   afterEach(() => {
     vi.useRealTimers()
     _resetGitAdmissionForTests()
+  })
+
+  it('bounds the SSH configuration probe before a fetch can start', async () => {
+    _resetGitAdmissionForTests(new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 0 }))
+    const holding = acquireGitAdmission({ args: ['status'], cwd: '/repo' })
+    await settleAdmissionGrant()
+    const blocker = await holding
+    const pending = gitExecFileAsync(['fetch', 'origin'], {
+      cwd: '/repo',
+      env: { ...process.env, GIT_SSH_COMMAND: '' },
+      useConfiguredSshCommandForNetwork: true
+    })
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: 'GitCommandTimeoutError',
+      timeoutMs: 2500
+    })
+    try {
+      await settleAdmissionGrant()
+      expect(_gitAdmissionSnapshotForTests().queued).toBe(1)
+      await vi.advanceTimersByTimeAsync(2500)
+      await rejection
+      expect(execFileMock).not.toHaveBeenCalled()
+      expect(spawnMock).not.toHaveBeenCalled()
+      expect(_gitAdmissionSnapshotForTests().queued).toBe(0)
+    } finally {
+      blocker.release()
+    }
   })
 
   it('retains the string-exec permit after timeout settlement until close', async () => {

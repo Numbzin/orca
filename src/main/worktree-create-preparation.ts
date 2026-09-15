@@ -1,3 +1,4 @@
+import { worktreePreparationGit } from './git/worktree-create-git-executor'
 import { mkdir } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import type { Store } from './persistence'
@@ -70,11 +71,22 @@ function canonicalBaseRef(
 ): Promise<string> {
   return resolveLocalWorktreeBaseRef(repoPath, baseBranch, {
     ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
-    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {}),
+    ...(options.signal ? { signal: options.signal } : {})
   })
 }
 
-export async function prepareWorktreeCreateForRepo(
+export function prepareWorktreeCreateForRepo(
+  store: Store,
+  repo: Repo,
+  baseBranch: string
+): Promise<void> {
+  return worktreePreparationGit.run(() =>
+    prepareWorktreeCreateInBackground(store, repo, baseBranch)
+  )
+}
+
+async function prepareWorktreeCreateInBackground(
   store: Store,
   repo: Repo,
   baseBranch: string
@@ -119,6 +131,7 @@ async function claimPreparedWorktree(
   args: ConsumePreparedWorktreeArgs,
   options: AddWorktreeOptions
 ): Promise<ClaimedPreparation> {
+  options.signal?.throwIfAborted()
   const request = {
     repoPathKey: preparationPathKey(args.repoPath),
     workspaceRootKey: preparationPathKey(args.workspaceRoot),
@@ -136,6 +149,7 @@ async function claimPreparedWorktree(
     try {
       canonicalBase = await canonicalBaseRef(args.repoPath, args.baseBranch, options)
     } catch {
+      options.signal?.throwIfAborted()
       return { status: 'miss', reason: 'prepare_failed' }
     }
     selection = selectPreparationForCreate(listPreparations(), { ...request, canonicalBase })

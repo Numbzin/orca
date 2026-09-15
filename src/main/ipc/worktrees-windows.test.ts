@@ -339,7 +339,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(resolveLocalGitUsernameMock).not.toHaveBeenCalled()
     // A name the user typed is never retired — the pool holds ordinary words people choose.
@@ -407,7 +407,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.addRetiredWorktreeName).not.toHaveBeenCalled()
   })
@@ -443,7 +443,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 

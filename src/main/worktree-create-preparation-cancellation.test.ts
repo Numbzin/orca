@@ -100,6 +100,30 @@ afterEach(async () => {
 // in-flight checkout cancellation paths (eviction, expiry, caller abort) and the discard that
 // follows, keeping both suites under the test-file line limit.
 describe('worktree create preparation cancellation', () => {
+  it('preserves the pool and propagates cancellation during canonical discovery', async () => {
+    await prepareWorktreeCreateForRepo(store, repo, 'origin/main')
+    const controller = new AbortController()
+    mocks.resolveBaseRef.mockImplementationOnce(async (_repo, _base, options) => {
+      expect(options.signal).toBe(controller.signal)
+      controller.abort()
+      options.signal.throwIfAborted()
+    })
+    const args = {
+      repoPath: repo.path,
+      workspaceRoot: '/workspace',
+      worktreePath: '/workspace/final',
+      branch: 'feature/test',
+      baseBranch: 'refs/remotes/origin/main',
+      options: { signal: controller.signal }
+    }
+    await expect(consumePreparedWorktreeCreate(args)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(mocks.finalize).not.toHaveBeenCalled()
+    expect(mocks.discard).not.toHaveBeenCalled()
+    await expect(consumePreparedWorktreeCreate({ ...args, options: {} })).resolves.toMatchObject({
+      status: 'hit'
+    })
+  })
+
   it('cancels an evicted checkout and cleans up with the original options', async () => {
     let signal: AbortSignal | undefined
     mocks.prepareCheckout.mockImplementationOnce((_repo, _path, _base, _lock, options) => {

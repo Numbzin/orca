@@ -9,7 +9,6 @@ import {
   type getWorktreePathSettings
 } from '../ipc/worktree-logic'
 import { getBranchConflictKind } from '../git/repo'
-import type { LocalGitExecOptions } from '../git/repo-default-base-ref'
 import {
   getBranchNameOverrideCandidate,
   getGeneratedWorktreeCreateCandidate,
@@ -58,7 +57,6 @@ export async function resolveRuntimeLocalWorktreeCreateCandidate(args: {
   store?: RuntimeStore
   baseBranch: string
   localWorktreeGitOptions: { wslDistro?: string }
-  gitOptions: LocalGitExecOptions
   hostedReviewExecutionContext?: HostedReviewExecutionOptions
 }): Promise<RuntimeLocalWorktreeCreateCandidate> {
   const sanitizedName = sanitizeWorktreeName(args.request.name)
@@ -109,14 +107,14 @@ export async function resolveRuntimeLocalWorktreeCreateCandidate(args: {
       effectiveSanitizedName,
       args.settings,
       args.username,
-      args.gitOptions
+      args.localWorktreeGitOptions
     )
     const tryExistingBranch = async (): Promise<boolean> => {
       checkoutExistingBranch = await canCheckoutExistingLocalBranch(
         args.repo.path,
         branchName,
         args.baseBranch,
-        args.gitOptions
+        args.localWorktreeGitOptions
       )
       return checkoutExistingBranch
     }
@@ -130,7 +128,7 @@ export async function resolveRuntimeLocalWorktreeCreateCandidate(args: {
           args.repo.path,
           branchName,
           args.baseBranch,
-          args.gitOptions,
+          args.localWorktreeGitOptions,
           preferExistingBranch ? undefined : tryExistingBranch
         )
     if (checkoutExistingBranch && !selectedExistingLocalBranchName) {

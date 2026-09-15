@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 // Why: worktree create helpers (local + remote) split out of worktrees.ts; the cohesive create flow runs this file just over the per-file line limit.
 
+import { worktreeCreateGit } from '../git/worktree-create-git-executor'
 import { getRepoHostedReviewExecutionHostId } from '../source-control/hosted-review-execution-host'
 import type { BrowserWindow } from 'electron'
 import { posix, win32 } from 'node:path'
@@ -175,9 +176,6 @@ const SSH_WORKTREE_CREATE_FETCH_FRESHNESS_MS = 30_000
 const SSH_WORKTREE_CREATE_FETCH_CACHE_MAX = 512
 // Why: bound the fallback `git fetch origin` so a Windows credential-manager GUI hang (STA-1292) can't wedge worktree creation forever.
 const CREATE_BASE_FALLBACK_FETCH_TIMEOUT_MS = 60_000
-// Why: a local create is a command the user waits on. At the default 'status' tier its git cannot
-// use the admission scheduler's headroom slots, so on a busy repo it queues behind background scans.
-const CREATE_GIT_ADMISSION_TIER = 'interactive' as const
 // Why (#17828 CodeRabbit follow-up): the deferred materialize fetch runs off the main
 // create path (terminal spawn, mid-session sync) with nothing else bounding it -- same
 // STA-1292 hang risk as the create-time fallback above, so mirror its timeout.
@@ -2302,7 +2300,19 @@ export async function createRemoteWorktree(
   }
 }
 
-export async function createLocalWorktree(
+export function createLocalWorktree(
+  args: CreateWorktreeArgsWithSystemProvenance,
+  repo: Repo,
+  store: Store,
+  mainWindow: BrowserWindow,
+  runtime?: OrcaRuntimeService
+): Promise<CreateWorktreeResult> {
+  return worktreeCreateGit.run(() =>
+    performLocalWorktreeCreate(args, repo, store, mainWindow, runtime)
+  )
+}
+
+async function performLocalWorktreeCreate(
   args: CreateWorktreeArgsWithSystemProvenance,
   repo: Repo,
   store: Store,
@@ -2316,25 +2326,15 @@ export async function createLocalWorktree(
     settings,
     getWorktreeMirrorDistro(store, repo)
   )
-  const localGitExecOptions = {
-    ...getLocalProjectGitExecOptions(store, repo),
-    admissionTier: CREATE_GIT_ADMISSION_TIER
-  }
+  const localGitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const localWorktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
   const hasLocalWorktreeGitOptions = Object.keys(localWorktreeGitOptions).length > 0
   const localWorktreeGitOptionArgs: [] | [{ wslDistro?: string }] = hasLocalWorktreeGitOptions
     ? [localWorktreeGitOptions]
     : []
-  // Tier kept off `localWorktreeGitOptions` itself: callers that only route WSL test that object
-  // for emptiness, and an extra key would read as "this repo has local git routing".
-  const interactiveWorktreeGitOptions = {
-    ...localWorktreeGitOptions,
-    admissionTier: CREATE_GIT_ADMISSION_TIER
-  }
   const addProjectGitOptions = (options?: AddWorktreeOptions): AddWorktreeOptions => ({
     ...options,
-    ...localWorktreeGitOptions,
-    admissionTier: CREATE_GIT_ADMISSION_TIER
+    ...localWorktreeGitOptions
   })
 
   const requestedName = args.name
@@ -2540,14 +2540,14 @@ export async function createLocalWorktree(
         effectiveSanitizedName,
         settings,
         username,
-        interactiveWorktreeGitOptions
+        localWorktreeGitOptions
       )
       const tryExistingBranch = async (): Promise<boolean> => {
         checkoutExistingBranch = await canCheckoutExistingLocalBranch(
           repo.path,
           branchName,
           baseBranch,
-          interactiveWorktreeGitOptions
+          localWorktreeGitOptions
         )
         return checkoutExistingBranch
       }
@@ -2562,7 +2562,7 @@ export async function createLocalWorktree(
             repo.path,
             branchName,
             baseBranch,
-            interactiveWorktreeGitOptions,
+            localWorktreeGitOptions,
             preferExistingBranch ? undefined : tryExistingBranch
           )
       if (checkoutExistingBranch && !selectedExistingLocalBranchName) {
@@ -2834,7 +2834,7 @@ export async function createLocalWorktree(
       worktreePath,
       branchName,
       preparedPushTarget,
-      interactiveWorktreeGitOptions
+      localWorktreeGitOptions
     )
   }
 
@@ -2844,7 +2844,7 @@ export async function createLocalWorktree(
     worktrees: gitWorktrees,
     listingComplete
   } = await timing.time('list_created_worktree', async () =>
-    resolveCreatedWorktree(repo.path, worktreePath, branchName, interactiveWorktreeGitOptions)
+    resolveCreatedWorktree(repo.path, worktreePath, branchName, localWorktreeGitOptions)
   )
 
   const worktreeId = `${repo.id}::${created.path}`

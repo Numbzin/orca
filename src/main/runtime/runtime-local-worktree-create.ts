@@ -1,3 +1,4 @@
+import { worktreeCreateGit } from '../git/worktree-create-git-executor'
 import type { Repo } from '../../shared/repo-types'
 import type { Worktree } from '../../shared/worktree/types'
 import type { Store } from '../persistence'
@@ -19,7 +20,7 @@ import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-work
 import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 
-export async function createRuntimeLocalManagedWorktree<T>(args: {
+type RuntimeLocalWorktreeCreateArgs<T> = {
   request: RuntimeManagedWorktreeCreateArgs
   repo: Repo
   store: Store
@@ -42,20 +43,18 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
   ) => Promise<RemoteFetchResult>
   fetchRemote: (path: string, remote: string, options?: LocalGitExecOptions) => Promise<void>
   onWorktreeMetadataPersisted: (worktree: Worktree) => T
-}) {
+}
+
+export function createRuntimeLocalManagedWorktree<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
+  return worktreeCreateGit.run(() => performRuntimeLocalWorktreeCreate(args))
+}
+
+async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
   const { request, repo, store } = args
   const settings = store.getSettings()
   const pathSettings = getWorktreePathSettings(repo, settings, getWorktreeMirrorDistro(store, repo))
-  const gitExecOptions = {
-    ...getLocalProjectGitExecOptions(store, repo),
-    admissionTier: 'interactive' as const
-  }
+  const gitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const worktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
-  // Routing-only options stay separate because hosted-review lookups test their emptiness.
-  const interactiveGitOptions: LocalGitExecOptions = {
-    ...worktreeGitOptions,
-    admissionTier: 'interactive'
-  }
   // Username and base resolution are independent read-only probes. Starting
   // both before awaiting removes one serial git/config round trip from create.
   const usernamePromise =
@@ -70,15 +69,15 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
       const remoteBase = await args.resolveRemoteTrackingBase(
         repo.path,
         candidate,
-        interactiveGitOptions
+        worktreeGitOptions
       )
       if (
         remoteBase &&
-        (await args.hasRemoteTrackingRef(repo.path, remoteBase, interactiveGitOptions))
+        (await args.hasRemoteTrackingRef(repo.path, remoteBase, worktreeGitOptions))
       ) {
         return true
       }
-      return hasLocalWorktreeBaseRef(repo.path, candidate, interactiveGitOptions)
+      return hasLocalWorktreeBaseRef(repo.path, candidate, worktreeGitOptions)
     }
   })
   const [username, baseBranch] = await Promise.all([usernamePromise, baseBranchPromise])
@@ -97,7 +96,6 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     store,
     baseBranch,
     localWorktreeGitOptions: worktreeGitOptions,
-    gitOptions: interactiveGitOptions,
     hostedReviewExecutionContext: args.hostedReviewExecutionContext
   })
   const git = await createRuntimeLocalGitWorktree({
@@ -111,7 +109,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     worktreePath: candidate.worktreePath,
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
-    localWorktreeGitOptions: interactiveGitOptions,
+    localWorktreeGitOptions: worktreeGitOptions,
     resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
     hasRemoteTrackingRef: args.hasRemoteTrackingRef,
     refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
@@ -134,7 +132,7 @@ export async function createRuntimeLocalManagedWorktree<T>(args: {
     displayNameKind: candidate.displayNameKind,
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     effectiveCreatedWithAgent: args.createdWithAgent,
-    localWorktreeGitOptions: interactiveGitOptions,
+    localWorktreeGitOptions: worktreeGitOptions,
     onMetadataPersisted: args.onWorktreeMetadataPersisted
   })
   git.rearmPreparation()

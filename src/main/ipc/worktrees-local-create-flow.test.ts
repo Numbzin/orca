@@ -266,7 +266,7 @@ describe('registerWorktreeHandlers', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`],
-      { cwd: '/workspace/repo', admissionTier: 'interactive' }
+      { cwd: '/workspace/repo' }
     )
     expect(runtimeStub.fetchRemoteWithCache).not.toHaveBeenCalled()
     expect(addWorktreeMock).toHaveBeenCalledWith(
@@ -276,7 +276,7 @@ describe('registerWorktreeHandlers', () => {
       sha,
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -360,7 +360,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(result).toMatchObject({
       worktree: expect.objectContaining({
@@ -393,7 +393,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/rocket',
@@ -445,7 +445,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::../worktrees/feature',
@@ -554,7 +554,7 @@ describe('registerWorktreeHandlers', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['check-ref-format', '--branch', 'feature/something'],
-      { cwd: '/workspace/repo', admissionTier: 'interactive' }
+      { cwd: '/workspace/repo' }
     )
     expect(addWorktreeMock).toHaveBeenCalledWith(
       '/workspace/repo',
@@ -563,7 +563,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(resolveLocalGitUsernameMock).not.toHaveBeenCalled()
     expect(result).toMatchObject({

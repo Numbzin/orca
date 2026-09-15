@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../persistence'
 import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
 import type { AddWorktreeOptions } from '../git/worktree'
-import { GitAdmissionScheduler } from '../git/command-runner/git-subprocess-admission'
+import {
+  acquireGitAdmission,
+  GitAdmissionScheduler,
+  _resetGitAdmissionForTests
+} from '../git/command-runner/git-subprocess-admission'
+import { resolveGitAdmissionTier } from '../git/command-runner/git-operation-executor'
 
 const mocks = vi.hoisted(() => ({
   rearm: vi.fn(),
@@ -102,7 +107,10 @@ function createWorktree(request: Partial<RuntimeManagedWorktreeCreateArgs> = {})
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.routing.mockReturnValue({})
-  mocks.defaultBase.mockResolvedValue('main')
+  mocks.defaultBase.mockImplementation(async () => {
+    expect(resolveGitAdmissionTier()).toBe('interactive')
+    return 'main'
+  })
   mocks.hasBase.mockResolvedValue(true)
   mocks.branchName.mockResolvedValue('app')
   mocks.canCheckout.mockResolvedValue(false)
@@ -111,8 +119,14 @@ beforeEach(() => {
   mocks.consume.mockResolvedValue({ status: 'hit', result: {}, rearm: mocks.rearm })
   mocks.add.mockResolvedValue({})
   mocks.addSparse.mockResolvedValue({})
-  mocks.listing.mockResolvedValue({ created: mocks.created })
-  mocks.remoteBase.mockResolvedValue(null)
+  mocks.listing.mockImplementation(async () => {
+    expect(resolveGitAdmissionTier()).toBe('interactive')
+    return { created: mocks.created }
+  })
+  mocks.remoteBase.mockImplementation(async () => {
+    expect(resolveGitAdmissionTier()).toBe('interactive')
+    return null
+  })
   mocks.hasRemoteRef.mockResolvedValue(true)
   mocks.refresh.mockResolvedValue({ ok: true })
   mocks.fetch.mockResolvedValue(undefined)
@@ -161,7 +175,7 @@ describe('runtime create Git priority', () => {
     async (wslDistro) => {
       const routing = wslDistro ? { wslDistro } : {}
       mocks.routing.mockReturnValue(routing)
-      const options = { ...routing, admissionTier: 'interactive' }
+      const options = routing
       const target = { remoteName: 'origin', branchName: 'app' }
       await createWorktree({ baseBranch: undefined, branchNameOverride: 'app', pushTarget: target })
 
@@ -190,7 +204,8 @@ describe('runtime create Git priority', () => {
   it('creates through interactive headroom when regular Git capacity is occupied', async () => {
     mocks.consume.mockResolvedValue({ status: 'miss', reason: 'none_armed' })
     const scheduler = new GitAdmissionScheduler({ generalCap: 1, generalHeadroom: 1 })
-    const blocker = await scheduler.acquire({ args: ['status'], cwd: '/repo' })
+    _resetGitAdmissionForTests(scheduler)
+    const blocker = await acquireGitAdmission({ args: ['status'], cwd: '/repo' })
     mocks.add.mockImplementation(
       async (
         _repo: string,
@@ -201,7 +216,7 @@ describe('runtime create Git priority', () => {
         _existing: boolean,
         options?: AddWorktreeOptions
       ) => {
-        const grant = await scheduler.acquire({
+        const grant = await acquireGitAdmission({
           args: ['worktree', 'add'],
           cwd: '/repo',
           tier: options?.admissionTier,
@@ -216,6 +231,7 @@ describe('runtime create Git priority', () => {
       expect(mocks.add).toHaveBeenCalledOnce()
     } finally {
       blocker.release()
+      _resetGitAdmissionForTests()
     }
   })
 
@@ -228,7 +244,7 @@ describe('runtime create Git priority', () => {
     }
     mocks.remoteBase.mockResolvedValue(base)
     await createWorktree({ baseBranch: 'origin/main', sparseCheckout: { directories: ['src'] } })
-    const options = { admissionTier: 'interactive' }
+    const options = {}
     expect(mocks.hasRemoteRef).toHaveBeenCalledWith('/repo', base, options)
     expect(mocks.refresh).toHaveBeenCalledWith('/repo', base, options)
     expect(mocks.addSparse).toHaveBeenCalledWith(

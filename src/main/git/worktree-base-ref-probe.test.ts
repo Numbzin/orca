@@ -73,6 +73,21 @@ describe('hasLocalWorktreeBaseRef', () => {
     gitExecFileAsync.mockReset()
   })
 
+  it('stops base discovery when the caller cancels the Git probe', async () => {
+    const controller = new AbortController()
+    gitExecFileAsync.mockImplementationOnce(async (_args, options) => {
+      expect(options.signal).toBe(controller.signal)
+      controller.abort()
+      options.signal.throwIfAborted()
+    })
+    await expect(
+      hasLocalWorktreeBaseRef(repoPath, 'origin/main', {
+        signal: controller.signal
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(gitExecFileAsync).toHaveBeenCalledOnce()
+  })
+
   it('prefers the remote namespace for a slashed short name', async () => {
     resolveOnly(['refs/remotes/origin/main'])
 

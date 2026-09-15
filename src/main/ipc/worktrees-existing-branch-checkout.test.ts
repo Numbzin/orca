@@ -143,7 +143,7 @@ describe('registerWorktreeHandlers', () => {
       'fix/bug-0',
       false,
       false,
-      { checkoutExistingBranch: true, admissionTier: 'interactive' }
+      { checkoutExistingBranch: true }
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/fix-bug-0',
@@ -201,7 +201,7 @@ describe('registerWorktreeHandlers', () => {
       'fix/bug-0',
       false,
       false,
-      { checkoutExistingBranch: true, admissionTier: 'interactive' }
+      { checkoutExistingBranch: true }
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/my-folder',
@@ -256,7 +256,7 @@ describe('registerWorktreeHandlers', () => {
       'fix/bug-0',
       false,
       false,
-      { checkoutExistingBranch: true, admissionTier: 'interactive' }
+      { checkoutExistingBranch: true }
     )
     expect(result).toMatchObject({
       worktree: expect.objectContaining({
@@ -288,7 +288,7 @@ describe('registerWorktreeHandlers', () => {
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['check-ref-format', '--branch', 'feature/something-2'],
-      { cwd: '/workspace/repo', admissionTier: 'interactive' }
+      { cwd: '/workspace/repo' }
     )
     expect(addWorktreeMock).toHaveBeenCalledWith(
       '/workspace/repo',
@@ -297,7 +297,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -342,11 +342,11 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
       ['branch', '--set-upstream-to', 'origin/feature/fix', 'feature/fix'],
-      { cwd: '/workspace/fix-title', admissionTier: 'interactive' }
+      { cwd: '/workspace/fix-title' }
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/fix-title',
@@ -437,7 +437,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/bitbucket-title',
@@ -493,7 +493,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/bitbucket-title-2',
@@ -530,7 +530,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -564,7 +564,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -608,7 +608,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -644,7 +644,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -700,7 +700,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { checkoutExistingBranch: true, admissionTier: 'interactive' }
+      { checkoutExistingBranch: true }
     )
   })
 
@@ -739,7 +739,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -783,7 +783,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(result).toMatchObject({
       worktree: expect.objectContaining({

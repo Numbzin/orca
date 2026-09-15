@@ -199,22 +199,20 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { wslDistro: 'Ubuntu', admissionTier: 'interactive' }
+      { wslDistro: 'Ubuntu' }
     )
     expect(resolveDefaultBaseRefWithLocalGitMock).toHaveBeenCalledWith({
       cwd: '/workspace/repo',
-      wslDistro: 'Ubuntu',
-      admissionTier: 'interactive'
+      wslDistro: 'Ubuntu'
     })
     expect(getBranchConflictKindMock).toHaveBeenCalledWith(
       '/workspace/repo',
       'improve-dashboard',
       'origin/main',
-      { wslDistro: 'Ubuntu', admissionTier: 'interactive' }
+      { wslDistro: 'Ubuntu' }
     )
     expect(listWorktreesMock).toHaveBeenCalledWith('/workspace/repo', {
-      wslDistro: 'Ubuntu',
-      admissionTier: 'interactive'
+      wslDistro: 'Ubuntu'
     })
     expectEveryGitCallRoutedTo('Ubuntu')
   })
@@ -420,7 +418,7 @@ describe('registerWorktreeHandlers', () => {
       'abc123',
       false,
       false,
-      { wslDistro: 'Ubuntu', admissionTier: 'interactive' }
+      { wslDistro: 'Ubuntu' }
     )
   })
 
@@ -553,7 +551,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { wslDistro: 'Ubuntu', admissionTier: 'interactive' }
+      { wslDistro: 'Ubuntu' }
     )
   })
 

@@ -7,6 +7,7 @@ import { isSafeGitRefName } from '../../shared/git-status-upstream-ref'
 import { resolveWorktreeAddBaseRef } from '../../shared/worktree/base-ref'
 
 type GitExecOptions = {
+  signal?: AbortSignal
   wslDistro?: string
   admissionTier?: GitAdmissionTier
 }
@@ -33,6 +34,7 @@ export async function resolveWorktreeBaseCommitOid(
     const oid = stdout.trim()
     return oid.length > 0 ? oid : null
   } catch (error) {
+    options.signal?.throwIfAborted()
     // A probe that never reached the ref store is not evidence the ref is absent; callers that
     // steer on `null` would otherwise turn a saturated admission queue into "no such base".
     if (error instanceof GitCommandTimeoutError) {

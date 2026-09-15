@@ -1,3 +1,4 @@
+import { worktreeCreateGit } from './worktree-create-git-executor'
 // Worktree scan sharing: in-flight coalescing and mutation-generation retirement.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -132,7 +133,7 @@ describe('listWorktrees in-flight sharing', () => {
     )
 
     const statusScan = listWorktreeGraph('/repo', { admissionTier: 'status' })
-    const interactiveScan = listWorktreeGraph('/repo', { admissionTier: 'interactive' })
+    const interactiveScan = worktreeCreateGit.run(() => listWorktreeGraph('/repo'))
     expect(resolvers).toHaveLength(2)
 
     for (const resolve of resolvers) {

@@ -24,7 +24,7 @@ import {
 import { prepareWindowsHostGitEnvironment } from './windows-host-git-environment'
 import { buildNetworkSshPolicyEnv } from './git-ssh-policy-env'
 import { nonInteractiveGitEnv, untranslatedGitOutputEnv } from './git-process-env'
-import { acquireGitAdmissionWithinTimeout } from './git-admission-deadline'
+import { acquireGitAdmission } from './git-subprocess-admission'
 import { GitCommandTimeoutError, gitCommandTimeoutMs } from './git-command-timeout'
 
 /**
@@ -66,16 +66,14 @@ async function gitExecFileAsyncUnlocked(
         ? await buildNetworkSshPolicyEnv(effectiveOptions)
         : { env: nonInteractiveGitEnv(effectiveOptions.env), mode: 'default' as const }
       const timeoutMs = gitCommandTimeoutMs(args, options.timeout, options.timeoutMsForTest)
-      const grant = await acquireGitAdmissionWithinTimeout(
-        {
-          args,
-          cwd: options.cwd,
-          wslDistro: options.wslDistro,
-          tier: options.admissionTier,
-          signal: options.signal
-        },
+      const grant = await acquireGitAdmission({
+        args,
+        cwd: options.cwd,
+        wslDistro: options.wslDistro,
+        tier: options.admissionTier,
+        signal: options.signal,
         timeoutMs
-      )
+      })
       span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
       const terminationState: { current: Promise<void> | null } = { current: null }
       const capture = (
@@ -215,15 +213,13 @@ export async function gitExecFileAsyncBuffer(
     }
     resolved = resolveGitCommand(args, options, false, true)
     const timeoutMs = gitCommandTimeoutMs(args, options.timeout, options.timeoutMsForTest)
-    const grant = await acquireGitAdmissionWithinTimeout(
-      {
-        args,
-        cwd: options.cwd,
-        wslDistro: options.wslDistro,
-        tier: options.admissionTier
-      },
+    const grant = await acquireGitAdmission({
+      args,
+      cwd: options.cwd,
+      wslDistro: options.wslDistro,
+      tier: options.admissionTier,
       timeoutMs
-    )
+    })
     span?.setAttribute('git.queue_wait_ms', grant.queueWaitMs)
     let termination: Promise<void> | null = null
     try {

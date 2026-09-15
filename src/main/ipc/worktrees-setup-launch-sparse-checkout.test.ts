@@ -142,7 +142,7 @@ describe('registerWorktreeHandlers', () => {
       'origin/main',
       false,
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
   })
 
@@ -224,7 +224,7 @@ describe('registerWorktreeHandlers', () => {
       ['packages/web', 'apps/api'],
       'origin/main',
       false,
-      { admissionTier: 'interactive' }
+      {}
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/improve-dashboard',
