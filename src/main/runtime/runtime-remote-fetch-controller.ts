@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from '../git/command-runner/git-command-timeout'
 import type { LocalGitExecOptions } from '../git/repo-default-base-ref'
 import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../../shared/git-fetch-auto-maintenance'
 import { getCanonicalRepoKey } from '../git/canonical-repo-key'
@@ -242,7 +243,10 @@ export class RuntimeRemoteFetchController {
         .split('\n')
         .map((line) => line.trim())
         .filter(Boolean)
-    } catch {
+    } catch (error) {
+      if (error instanceof GitCommandTimeoutError) {
+        throw error
+      }
       return null
     }
     const remote = remotes
@@ -274,7 +278,10 @@ export class RuntimeRemoteFetchController {
         ...gitOptions
       })
       return true
-    } catch {
+    } catch (error) {
+      if (error instanceof GitCommandTimeoutError) {
+        throw error
+      }
       return false
     }
   }

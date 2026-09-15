@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from './command-runner/git-command-timeout'
 import type { SshGitProvider } from '../providers/ssh-git-provider'
 import { extractExecError, ghExecFileAsync, gitExecFileAsync } from './runner'
 import { parseHostedRemote } from './hosted-remote-url'
@@ -320,7 +321,10 @@ export async function resolveLocalGitUsernameDetailed(
       if (username) {
         return { username, authoritative: true }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof GitCommandTimeoutError) {
+        return { username: '', authoritative: false }
+      }
       // Missing config keys are expected; try the next explicit username key.
     }
   }

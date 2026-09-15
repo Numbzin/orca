@@ -158,6 +158,26 @@ describe('resolveLocalGitUsername', () => {
     expect(ghExecFileAsyncMock).not.toHaveBeenCalled()
   })
 
+  it.each(['github.user', 'user.username'])(
+    'keeps a timed-out %s lookup non-authoritative',
+    async (key) => {
+      originRemoteUrl = 'https://github.com/stablyai/orca.git'
+      ghExecFileAsyncMock.mockResolvedValue({ stdout: 'different-account\n', stderr: '' })
+      const original = gitExecFileAsyncMock.getMockImplementation()!
+      gitExecFileAsyncMock.mockImplementation(async (...args) => {
+        if (args[0][0] === 'config' && args[0].includes(key)) {
+          throw new GitCommandTimeoutError(5000)
+        }
+        return original(...args)
+      })
+      await expect(resolveLocalGitUsernameDetailed('/repo')).resolves.toEqual({
+        username: '',
+        authoritative: false
+      })
+      expect(ghExecFileAsyncMock).not.toHaveBeenCalled()
+    }
+  )
+
   it('stops after a successful empty remote list', async () => {
     await expect(resolveLocalGitUsernameDetailed('/repo')).resolves.toEqual({
       username: '',

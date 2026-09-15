@@ -1,3 +1,4 @@
+import { GitCommandTimeoutError } from '../git/command-runner/git-command-timeout'
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
 import { resolveGitAdmissionTier } from '../git/command-runner/git-operation-executor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -114,6 +115,21 @@ describe('OrcaRuntimeService.fetchRemoteWithCache', () => {
         }
       })
   )
+
+  it('propagates timeouts instead of declaring the remote or tracking ref absent', async () => {
+    const runtime = new OrcaRuntimeService()
+    const timeout = new GitCommandTimeoutError(120_000)
+    gitExecFileAsyncMock.mockRejectedValue(timeout)
+    await expect(runtime.resolveRemoteTrackingBase('/repo', 'origin/main')).rejects.toBe(timeout)
+    await expect(
+      runtime.hasRemoteTrackingRef('/repo', {
+        remote: 'origin',
+        branch: 'main',
+        ref: 'refs/remotes/origin/main',
+        base: 'origin/main'
+      })
+    ).rejects.toBe(timeout)
+  })
 
   beforeEach(() => {
     gitExecFileAsyncMock.mockReset()
