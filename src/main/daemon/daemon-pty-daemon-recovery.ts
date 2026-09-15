@@ -59,6 +59,10 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
       return
     }
     this.writeRecoveryAttempted = true
+    // Why here: client.onDisconnected() clears writeRecoveryAttempted unconditionally on every
+    // transport drop, which can let a write re-enter this method while an earlier failure's
+    // retry timer is still pending — cancel that stale timer so at most one is ever outstanding.
+    this.clearPendingWriteRecoveryRetryTimer()
     // Why: the dead endpoint took down every session on this daemon. Signal all
     // active panes now — while they are still in activeSessionIds, so the
     // renderer's liveness gate still reads them live — so background panes
@@ -81,7 +85,8 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
           error instanceof DaemonCrashLoopError
             ? Math.max(error.retryAfterMs, MIN_CRASH_LOOP_RETRY_DELAY_MS)
             : DEFAULT_DAEMON_RESPAWN_WINDOW_MS
-        const retryTimer = setTimeout(() => {
+        this.pendingWriteRecoveryRetryTimer = setTimeout(() => {
+          this.pendingWriteRecoveryRetryTimer = null
           // Why: only the panes still in this set are actually waiting; if they've all
           // since exited, retrying would fork the daemon for nothing on every drained
           // window, working against the throttle's own containment.
@@ -91,7 +96,7 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
           this.writeRecoveryAttempted = false
           this.reconnectAfterWriteFailure()
         }, retryDelayMs)
-        retryTimer.unref()
+        this.pendingWriteRecoveryRetryTimer.unref()
       })
       .finally(() => {
         this.releasePendingRespawnAdoptionLease()

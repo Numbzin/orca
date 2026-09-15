@@ -261,6 +261,39 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
       }
     })
 
+    it('cancels a stale pending retry timer instead of leaving two outstanding', async () => {
+      // Why a synthetic stale timer rather than a real second disconnect: client.onDisconnected()
+      // clears writeRecoveryAttempted on every transport drop regardless of a pending retry, so a
+      // write arriving between drops can re-enter recovery while an earlier failure's timer is
+      // still scheduled. Reproducing that race for real needs a reconnect-then-drop-again
+      // sequence; planting the stale handle directly pins the fix (cancel-on-entry) without it.
+      const respawn = vi.fn(async () => {
+        restartServerOnRespawn()
+        await server.start()
+      })
+      const healingAdapter = new DaemonPtyAdapter({ socketPath, tokenPath, respawn })
+      try {
+        const { id } = await healingAdapter.spawn({ cols: 80, rows: 24 })
+        const client = (healingAdapter as unknown as { client: DaemonClient }).client
+        await server.shutdown()
+        await waitFor(() => !client.isConnected())
+
+        const internal = healingAdapter as unknown as {
+          pendingWriteRecoveryRetryTimer: NodeJS.Timeout | null
+        }
+        const staleTimer = setTimeout(() => {}, 999_999)
+        internal.pendingWriteRecoveryRetryTimer = staleTimer
+        const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+
+        expect(() => healingAdapter.write(id, 'a')).toThrow(PtyWriteUnavailableError)
+
+        expect(clearTimeoutSpy).toHaveBeenCalledWith(staleTimer)
+        clearTimeoutSpy.mockRestore()
+      } finally {
+        healingAdapter.dispose()
+      }
+    })
+
     it('retries write recovery on its own once a crash-loop refusal drains, without another keystroke', async () => {
       const respawn = vi.fn(async () => {
         if (respawn.mock.calls.length === 1) {
