@@ -17,6 +17,44 @@ function askBlocks(state: 'running' | 'completed'): NativeChatBlock[] {
 }
 
 describe('NativeChatToolRun awaiting-input row', () => {
+  it('does not revive stale tool state after a turn stops', () => {
+    render(
+      <NativeChatToolRun blocks={askBlocks('running')} expandSignal activeTurnIsWorking={false} />
+    )
+    expect(screen.queryByText('Awaiting user input:')).toBeNull()
+    expect(screen.getByText('Asked:')).toBeInTheDocument()
+  })
+
+  it('keeps a pending question visible alongside another active tool', () => {
+    render(
+      <NativeChatToolRun
+        blocks={[
+          ...askBlocks('running'),
+          { type: 'tool-call', name: 'Read', input: { file_path: 'a.ts' }, state: 'running' }
+        ]}
+        expandSignal
+        activeTurnIsWorking
+      />
+    )
+    expect(screen.getByText('Awaiting user input:')).toBeInTheDocument()
+    expect(screen.getByText(/Running Read/)).toBeInTheDocument()
+  })
+
+  it('preserves errors from failed question calls', () => {
+    render(
+      <NativeChatToolRun
+        blocks={[
+          { type: 'tool-call', name: 'AskUserQuestion', input: ASK_INPUT, state: 'failed' },
+          { type: 'tool-result', output: 'Question rejected', isError: true }
+        ]}
+        expandSignal
+        activeTurnIsWorking={false}
+      />
+    )
+    expect(screen.queryByText('Awaiting user input:')).toBeNull()
+    expect(screen.queryByText('Asked:')).toBeNull()
+    expect(screen.getAllByText('Question rejected').length).toBeGreaterThan(0)
+  })
   it('replaces a running ask call with the awaiting row', () => {
     const { container } = render(
       <NativeChatToolRun blocks={askBlocks('running')} expandSignal activeTurnIsWorking />

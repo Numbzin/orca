@@ -4,6 +4,7 @@ import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/Comme
 import { translate } from '@/i18n/i18n'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { createNativeChatMessageListProjection } from './native-chat-message-list-projection'
+import { structuredQuestionTranscript } from './structured-agent-question-projection'
 import { nativeChatTaskListState } from './native-chat-task-list-state'
 import { nativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import { NativeChatTaskList } from './NativeChatTaskList'
@@ -82,15 +83,7 @@ export function NativeChatMessageList({
     setRevealedDiff((current) => ({ ...target, requestId: (current?.requestId ?? 0) + 1 }))
   }, [])
   const receipts = useMemo(
-    () =>
-      new Map(
-        journalItems?.flatMap((item) =>
-          (item.body.kind === 'approval' || item.body.kind === 'question') &&
-          item.body.resolution.state !== 'pending'
-            ? [[item.itemId, item.body] as const]
-            : []
-        )
-      ),
+    () => (journalItems ? structuredQuestionTranscript(journalItems).receipts : new Map()),
     [journalItems]
   )
   const scrollRef = useRef<HTMLDivElement | null>(null)

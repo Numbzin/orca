@@ -26,8 +26,7 @@ import {
 } from '../../../../shared/native-chat-tool-activity'
 import { nativeChatToolRunIconName } from '../../../../shared/native-chat-tool-icon'
 import {
-  hasNativeChatAskCall,
-  isNativeChatAskCall,
+  nativeChatAskRunBlocks,
   nativeChatAskRunSubject
 } from '../../../../shared/native-chat-ask-row'
 import { NativeChatAwaitingInputRow } from './NativeChatAwaitingInputRow'
@@ -94,14 +93,12 @@ export function NativeChatToolRun({
   const subagentRows = subagentGroups
     .filter(isRenderableSubagentGroup)
     .map((group) => <NativeChatSubagentRun key={group.groupId} block={group} />)
-  // A question tool call is not work to summarize — the agent is blocked on the
-  // reader — so its calls leave the header for one awaiting row and the header
-  // is left describing only what actually ran. Everything below reads
-  // `headerBlocks`, so a run that is nothing but the ask draws no header at all
-  // rather than a `1×` counting a call the reader is being asked to answer.
-  const hasAskCall = structuredActivityUi && hasNativeChatAskCall(blocks)
-  const askSubject = hasAskCall ? nativeChatAskRunSubject(blocks) : null
-  const headerBlocks = hasAskCall ? blocks.filter((block) => !isNativeChatAskCall(block)) : blocks
+  const { asks, work: headerBlocks } = useMemo(
+    () => (structuredActivityUi ? nativeChatAskRunBlocks(blocks) : { asks: [], work: blocks }),
+    [blocks, structuredActivityUi]
+  )
+  const hasAskCall = asks.length > 0
+  const askSubject = hasAskCall ? nativeChatAskRunSubject(asks) : null
   const showsHeader = !hasAskCall || countToolCalls(headerBlocks) > 0
   const callCount = countToolCalls(headerBlocks) || headerBlocks.length
   // Members stay separate all the way to the markup: joining them into one
@@ -120,15 +117,11 @@ export function NativeChatToolRun({
       return { ...member, key: `${signature}:${occurrence}` }
     })
   })()
-  const latestActiveCall = structuredActivityUi
-    ? selectActiveToolCall(blocks, { activeTurnIsWorking })
+  const headerActiveCall = structuredActivityUi
+    ? selectActiveToolCall(headerBlocks, { activeTurnIsWorking })
     : null
-  const isSettled = latestActiveCall == null
-  // The ask owns the active slot when it is the live call: its own row already
-  // says the turn is waiting, and a second "Running request_user_input" beside
-  // it would report the block twice in two different vocabularies.
-  const askIsActive = latestActiveCall !== null && isNativeChatAskCall(latestActiveCall)
-  const headerActiveCall = askIsActive ? null : latestActiveCall
+  const isSettled = headerActiveCall == null
+  const askIsActive = selectActiveToolCall(asks, { activeTurnIsWorking }) !== null
   const hasRunningCall = headerBlocks.some(
     (block) => isToolCallBlock(block) && block.state === 'running'
   )

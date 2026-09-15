@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { hasNativeChatAskCall, nativeChatAskRunSubject } from './native-chat-ask-row'
+import {
+  hasNativeChatAskCall,
+  nativeChatAskRunSubject,
+  nativeChatAskRunBlocks
+} from './native-chat-ask-row'
 import type { NativeChatBlock } from './native-chat-types'
 
 function askCall(input: unknown, name = 'AskUserQuestion'): NativeChatBlock {
@@ -7,6 +11,16 @@ function askCall(input: unknown, name = 'AskUserQuestion'): NativeChatBlock {
 }
 
 describe('native chat ask row', () => {
+  it('removes the question result without attaching it to another tool', () => {
+    const ask = askCall({ questions: [{ question: 'Proceed?' }] })
+    const answer: NativeChatBlock = { type: 'tool-result', output: 'yes' }
+    const read: NativeChatBlock = { type: 'tool-call', name: 'Read', input: {} }
+    const output: NativeChatBlock = { type: 'tool-result', output: 'file contents' }
+    expect(nativeChatAskRunBlocks([ask, read, answer, output])).toEqual({
+      asks: [ask],
+      work: [read, output]
+    })
+  })
   it('names the one question a prompt asks', () => {
     expect(
       nativeChatAskRunSubject([askCall({ questions: [{ question: 'Which branch?' }] })])

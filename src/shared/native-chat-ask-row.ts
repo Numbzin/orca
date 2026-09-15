@@ -5,6 +5,7 @@
 import { isAskUserQuestionTool } from './agent-question-answered-intent'
 import { parseAskFromToolInput } from './native-chat-ask'
 import { isToolCallBlock, type NativeChatBlock } from './native-chat-types'
+import { pairToolBlocks } from './native-chat-tool-fold'
 
 export const NATIVE_CHAT_ASK_ROW_COPY = {
   awaiting: 'Awaiting user input:',
@@ -22,7 +23,27 @@ export type NativeChatAskRowSubject =
 /** Whether this block is a question tool call, and so is drawn as the awaiting
  *  row rather than as an ordinary tool line. */
 export function isNativeChatAskCall(block: NativeChatBlock): boolean {
-  return isToolCallBlock(block) && isAskUserQuestionTool(block.name)
+  return isToolCallBlock(block) && block.state !== 'failed' && isAskUserQuestionTool(block.name)
+}
+
+/** Remove each summarized call together with its FIFO result, preserving failed calls. */
+export function nativeChatAskRunBlocks(blocks: NativeChatBlock[]): {
+  asks: NativeChatBlock[]
+  work: NativeChatBlock[]
+} {
+  const removed = new Set<NativeChatBlock>()
+  const asks: NativeChatBlock[] = []
+  for (const { call, result } of pairToolBlocks(blocks)) {
+    if (!call || !isNativeChatAskCall(call) || result?.isError) {
+      continue
+    }
+    asks.push(call)
+    removed.add(call)
+    if (result) {
+      removed.add(result)
+    }
+  }
+  return { asks, work: removed.size ? blocks.filter((block) => !removed.has(block)) : blocks }
 }
 
 /** Whether this run asks the reader anything. Decided by the tool name alone,
