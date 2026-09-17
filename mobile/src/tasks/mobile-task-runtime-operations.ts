@@ -7,8 +7,8 @@ import {
 // What the Tasks screen reads once per host to hydrate, and the preferences it writes back.
 
 /**
- * status.get read for task hydration, the first of two policies on this method. A refused status
- * stops hydration with the host's own message; the create-time probe in
+ * status.get read for task hydration, with its own policy on that method: a refused status stops
+ * hydration with the host's own message, where the create-time probe in
  * mobile-workspace-create-operations.ts degrades instead. One reader serves both.
  */
 export const taskRuntimeStatusRead = bindDeferredRpcOperation(
@@ -83,5 +83,24 @@ export const taskSettingsWrite = bindDeferredRpcOperation(
     acceptance: 'success-result-or-skip',
     barrier: 'after-caller-barrier',
     read: rpcUncheckedPayloadReader('setting-written')
+  })
+)
+
+/**
+ * Switching the connected Linear workspace from the filter sheet.
+ *
+ * Declared but never interpreted, and deliberately: the picker chains `loadLinearContext` off the
+ * send without reading the reply, so a refused switch reloads the context exactly as an accepted
+ * one does and only a transport rejection reaches the error copy. Interpreting here would make a
+ * refusal visible for the first time, which is a product change and not this one. See
+ * unvalidated-rpc-request-port-inventory.ts for the ticket.
+ */
+export const linearWorkspaceSelect = bindDeferredRpcOperation(
+  defineRpcOperation({
+    name: 'linear.select-workspace-or-skip',
+    method: 'linear.selectWorkspace',
+    acceptance: 'success-result-or-skip',
+    barrier: 'after-caller-barrier',
+    read: rpcUncheckedPayloadReader('linear-workspace-selection')
   })
 )

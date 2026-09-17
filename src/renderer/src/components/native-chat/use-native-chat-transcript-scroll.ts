@@ -21,7 +21,6 @@ import {
   type UIEventHandler
 } from 'react'
 import {
-  isNearBottom,
   nextFollowingEnd,
   shouldLoadEarlier,
   shouldShowJumpToLatest,
@@ -34,6 +33,10 @@ function geometryOf(element: HTMLElement): ScrollGeometry {
     scrollHeight: element.scrollHeight,
     clientHeight: element.clientHeight
   }
+}
+
+function hasMeasurableViewport(element: HTMLElement | null): element is HTMLElement {
+  return element !== null && element.clientHeight > 0
 }
 
 export type NativeChatTranscriptScroll = {
@@ -50,11 +53,13 @@ export function useNativeChatTranscriptScroll({
   itemCount,
   isWorking,
   showTypingIndicator,
+  isVisible,
   hasMore,
   loadingEarlier,
   loadEarlier,
   alignToViewportTop,
   scrollToEnd,
+  restoreScrollOffset,
   consumeProgrammaticScroll,
   reconcileReaderScroll
 }: {
@@ -63,23 +68,28 @@ export function useNativeChatTranscriptScroll({
   itemCount: number
   isWorking: boolean
   showTypingIndicator: boolean
+  isVisible: boolean
   hasMore: boolean
   loadingEarlier: boolean
   loadEarlier: () => void
   alignToViewportTop: (element: HTMLElement) => void
   scrollToEnd: () => void
+  restoreScrollOffset: (offset: number) => void
   consumeProgrammaticScroll: (event: Event) => boolean
   reconcileReaderScroll: (isTakingOver: boolean) => void
 }): NativeChatTranscriptScroll {
   const [showJump, setShowJump] = useState(false)
   const followingRef = useRef(true)
+  const detachedScrollTopRef = useRef<number | null>(null)
+  const isVisibleRef = useRef(isVisible)
+  const previousIsVisibleRef = useRef(isVisible)
   const previousScrollTopRef = useRef(0)
   const loadEarlierRequestedAtRef = useRef<number | null>(null)
 
   const syncScrollState = useCallback(
     (event?: Event): ScrollGeometry | null => {
       const element = scrollRef.current
-      if (!element) {
+      if (!isVisibleRef.current || !hasMeasurableViewport(element)) {
         return null
       }
       const geometry = geometryOf(element)
@@ -89,13 +99,14 @@ export function useNativeChatTranscriptScroll({
         const following = nextFollowingEnd({
           following: followingRef.current,
           programmatic,
-          atEnd: isNearBottom(geometry)
+          geometry
         })
         followingRef.current = following
         if (!programmatic) {
           reconcileReaderScroll(wasFollowing && !following)
         }
       }
+      detachedScrollTopRef.current = followingRef.current ? null : geometry.scrollTop
       setShowJump(shouldShowJumpToLatest(followingRef.current, geometry))
       return geometry
     },
@@ -130,11 +141,17 @@ export function useNativeChatTranscriptScroll({
     [hasMore, itemCount, loadEarlier, loadingEarlier, syncScrollState]
   )
 
+  const scrollToEndWhenMeasurable = useCallback(() => {
+    if (hasMeasurableViewport(scrollRef.current)) {
+      scrollToEnd()
+    }
+  }, [scrollRef, scrollToEnd])
+
   const scrollToBottom = useCallback(() => {
     followingRef.current = true
-    scrollToEnd()
+    scrollToEndWhenMeasurable()
     setShowJump(false)
-  }, [scrollToEnd])
+  }, [scrollToEndWhenMeasurable])
 
   const scrollMessageToTop = useCallback(
     (element: HTMLElement) => {
@@ -145,10 +162,27 @@ export function useNativeChatTranscriptScroll({
   )
 
   useLayoutEffect(() => {
-    if (followingRef.current) {
-      scrollToEnd()
+    const revealed = isVisible && !previousIsVisibleRef.current
+    isVisibleRef.current = isVisible
+    previousIsVisibleRef.current = isVisible
+    if (!isVisible) {
+      return
     }
-  }, [itemCount, isWorking, showTypingIndicator, scrollToEnd])
+    if (!followingRef.current) {
+      if (revealed && detachedScrollTopRef.current !== null) {
+        restoreScrollOffset(detachedScrollTopRef.current)
+      }
+      return
+    }
+    scrollToEndWhenMeasurable()
+  }, [
+    isVisible,
+    itemCount,
+    isWorking,
+    restoreScrollOffset,
+    showTypingIndicator,
+    scrollToEndWhenMeasurable
+  ])
 
   useEffect(() => {
     const element = scrollRef.current
@@ -157,7 +191,7 @@ export function useNativeChatTranscriptScroll({
     }
     const observer = new ResizeObserver(() => {
       if (followingRef.current) {
-        scrollToEnd()
+        scrollToEndWhenMeasurable()
       } else {
         syncScrollState()
       }
@@ -169,7 +203,7 @@ export function useNativeChatTranscriptScroll({
       observer.observe(contentRef.current)
     }
     return () => observer.disconnect()
-  }, [contentRef, scrollRef, scrollToEnd, syncScrollState])
+  }, [contentRef, scrollRef, scrollToEndWhenMeasurable, syncScrollState])
 
   return { showJump, onScroll, scrollToBottom, scrollMessageToTop }
 }

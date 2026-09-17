@@ -3,17 +3,19 @@
   "family": "tasks.smart-source-search",
   "namedDeltas": [],
   "runnerVersion": 1,
-  "baseline": "50e752fc66a84638b0a8c1f4bdbbd5fdc708c3e9",
-  "lockfileSha256": "788c1234b38a61fc882fca292341fce6690deee9cc6695673b0575cf2c4cf571",
-  "recorderSha256": "5ec2faffa944097d2916e2e9e2259b9d0c68e364c5f865bafd8a9600faedbdc7",
+  "baseline": "01a1b6b024f6664c110e9ae50717ef4880fd8d82",
+  "lockfileSha256": "4568633356187895ccda8e2ff83245c37d5621832c69e268733733b6947971e3",
+  "recorderSha256": "d4fa125899cd863c03dbf96657d46b8c7d6c0ccf522b342bc4f164ed1e3becfe",
+  "adapterSha256": "343b97826782820b7aecaddd13a4c8cdbbbca057c83021863d577a677934f3a3",
   "scenarioSha256": "34ab4edb621856980c8678629bd809c100d27dcd0747db5abbf4508c7231b7e5",
   "platform": "darwin",
   "scenarioVersion": 1,
   "projectionVersion": 2,
-  "goldenFormatVersion": 4,
+  "goldenFormatVersion": 5,
   "values": {
-    "4e3aac46030e": {
+    "251733144c41": {
       "name": "linear.listIssues#1",
+      "ordinal": 1,
       "args": [
         {
           "name": "method",
@@ -61,8 +63,9 @@
         }
       ]
     },
-    "b107467b4d7c": {
+    "b272a4494870": {
       "name": "linear.listIssues#1",
+      "ordinal": 2,
       "json": "{\"id\":\"frame-1\",\"deviceToken\":\"recording-device\",\"method\":\"linear.listIssues\",\"params\":{\"filter\":\"assigned\",\"limit\":50}}"
     },
     "f2b981b0b281": {
@@ -79,8 +82,8 @@
       {
         "id": "linear-assigned",
         "observation": {
-          "sender": ["4e3aac46030e"],
-          "payloads": ["b107467b4d7c"],
+          "sender": ["251733144c41"],
+          "payloads": ["b272a4494870"],
           "settlements": {
             "linear": "a95bdb94e589"
           },

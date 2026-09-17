@@ -21,6 +21,21 @@ export const worktreeCreateRun = bindDeferredRpcOperation(
 )
 
 /**
+ * agent.launch carrying a create payload: the host settles whether the agent lands in a structured
+ * session or a terminal. Same reply discipline as worktreeCreateRun, and for the same reason — the
+ * two share one clientMutationId, so the retry loop must see an unlost reply either way.
+ */
+export const agentLaunchRun = bindDeferredRpcOperation(
+  defineRpcOperation({
+    name: 'agent.launch',
+    method: 'agent.launch',
+    acceptance: 'require-result-or-throw-message',
+    barrier: 'after-caller-barrier',
+    read: rpcUncheckedPayloadReader('agent-launch-receipt')
+  })
+)
+
+/**
  * The start point for a workspace created from a linked pull request. Refusal throws the host's
  * message; an accepted reply can still carry a soft `{ error }` the caller raises itself.
  */
@@ -46,9 +61,9 @@ export const worktreeMrBaseResolve = bindDeferredRpcOperation(
 )
 
 /**
- * status.get read for create-time capabilities, the second of two policies on this method.
+ * status.get read for create-time capabilities, with its own policy on that method.
  *
- * Both policies named because the two callers disagree about what a refused status means: the
+ * Separately named because the callers disagree about what a refused status means: the
  * Tasks screen cannot hydrate without it and surfaces the host's message (`taskRuntimeStatusRead`),
  * while create-time capability probing degrades to "no capabilities" and creates anyway, so here a
  * refusal is a skip. One reader serves both — the payload is unchecked in each.
